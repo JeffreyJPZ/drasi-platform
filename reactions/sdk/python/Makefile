@@ -9,8 +9,10 @@ generate-types:
 	npm run clean --prefix ../../../typespec
 	npm run build ./view-svc --prefix ../../../typespec
 	npm run build ./query-output --prefix ../../../typespec
-	poetry run datamodel-codegen --input-file-type jsonschema --input ../../../typespec/query-output/_generated/@typespec/json-schema --output-model-type pydantic_v2.BaseModel --use-annotated --output ./drasi_reaction/models
-	poetry run datamodel-codegen --input-file-type jsonschema --input ../../../typespec/view-svc/_generated/@typespec/json-schema --output-model-type pydantic_v2.BaseModel --use-annotated --output ./drasi_reaction/models
+	npm run build ./output-unpacked --prefix ../../../typespec
+	poetry run datamodel-codegen --input-file-type jsonschema --input ../../../typespec/view-svc/_generated/@typespec/json-schema --output-model-type pydantic_v2.BaseModel --use-annotated --output ./drasi/reaction/models
+	poetry run datamodel-codegen --input-file-type jsonschema --input ../../../typespec/query-output/_generated/@typespec/json-schema --output-model-type pydantic_v2.BaseModel --use-annotated --output ./drasi/reaction/models
+	poetry run datamodel-codegen --input-file-type jsonschema --input ../../../typespec/output-unpacked/_generated/@typespec/json-schema --output-model-type pydantic_v2.BaseModel --use-annotated --output ./drasi/reaction/models
 
 test:
 	poetry run pytest tests

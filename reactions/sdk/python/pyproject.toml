@@ -14,7 +14,7 @@ exclude = ["examples/**"]
 python = "^3.10"
 dapr = "^1.14.0"
 dapr-ext-fastapi = "^1.14.0"
-fastapi = "^0.115.4"
+fastapi = "^0.116.0"
 PyYAML = "6.0.2"
 pydantic = "^2.10.0"
 
