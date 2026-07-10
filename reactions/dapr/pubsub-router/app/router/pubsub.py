@@ -13,3 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+
+
+class PubSubRouter():
+    """
+    Dispatches Drasi events to Dapr pub/sub topics.
+    """
+
+    def __init__(
+        self,
+        name: str = "dapr-pubsub-router",
+    ) -> None:
+        pass
