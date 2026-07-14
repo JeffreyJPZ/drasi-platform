@@ -14,21 +14,7 @@
 # limitations under the License.
 #
 
-import asyncio
+from .server import MCPServer
+from .tools import DrasiQueryToolSet
 
-from runner import AppRunner
-
-
-async def main():
-    runner = AppRunner()
-    try:
-        await runner.start()
-    except Exception:
-        await runner.shutdown()
-
-
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        pass
+__all__ = ["DrasiQueryToolSet", "MCPServer"]

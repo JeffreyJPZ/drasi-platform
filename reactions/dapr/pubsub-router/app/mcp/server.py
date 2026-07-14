@@ -14,21 +14,31 @@
 # limitations under the License.
 #
 
-import asyncio
+from dapr.clients import DaprClient
+from fastmcp import FastMCP
 
-from runner import AppRunner
-
-
-async def main():
-    runner = AppRunner()
-    try:
-        await runner.start()
-    except Exception:
-        await runner.shutdown()
+from tools import DrasiQueryToolSet
 
 
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
+class MCPServer:
+    """
+    An MCP server that registers tools.
+    """
+
+    def __init__(self, name: str, dapr_client: DaprClient, mcp: FastMCP):
+        self._name = name
+        self._tools = DrasiQueryToolSet(dapr_client, mcp)
+
+
+    def start(self) -> None:
+        """
+        Start the MCP server.
+        """
+        pass
+
+
+    def shutdown(self) -> None:
+        """
+        Shutdown the MCP server.
+        """
         pass

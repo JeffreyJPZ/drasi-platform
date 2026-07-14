@@ -5,5 +5,12 @@ description = "Dapr PubSub Router Reaction"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [
+    "dapr==1.18.1",
+    "drasi-reaction-sdk",
     "fastmcp==3.4.4",
+    "pydantic==2.13.4",
+    "pydantic-handlebars==0.2.1",
 ]
+
+[tool.uv.sources]
+drasi-reaction-sdk = { path = "../../sdk/python", editable = true }  # Local package allows for more recent fastapi versions
