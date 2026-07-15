@@ -23,7 +23,7 @@ Repository = "https://github.com/drasi-project/drasi-platform"
 [dependency-groups]
 dev = [
     "pytest>=8.0.0,<9.0.0",
-    "datamodel-code-generator==0.26.3",
+    "datamodel-code-generator==0.64.0",
 ]
 
 [build-system]
