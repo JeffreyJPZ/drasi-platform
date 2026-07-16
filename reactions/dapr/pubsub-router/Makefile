@@ -18,7 +18,7 @@ default: docker-build
 
 # Need build context at reactions root since we are using local install
 docker-build:
-	docker buildx build ../.. -f Dockerfile.$(BUILD_CONFIG) -t $(IMAGE_PREFIX)/reaction-dapr-pubsub-router:$(DOCKER_TAG_VERSION) $(DOCKERX_OPTS)
+	docker buildx build ../../ -f Dockerfile.$(BUILD_CONFIG) -t $(IMAGE_PREFIX)/reaction-dapr-pubsub-router:$(DOCKER_TAG_VERSION) $(DOCKERX_OPTS)
 
 kind-load:
 	kind load docker-image $(IMAGE_PREFIX)/reaction-dapr-pubsub-router:$(DOCKER_TAG_VERSION) --name $(if $(CLUSTER_NAME),$(CLUSTER_NAME),kind)

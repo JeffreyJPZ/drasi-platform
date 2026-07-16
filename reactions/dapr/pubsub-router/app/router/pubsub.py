@@ -14,91 +14,60 @@
 # limitations under the License.
 #
 
-from typing import Any, Callable
+from dataclasses import field
+from typing import Any
 
 from dapr.clients import DaprClient
-from pydantic import BaseModel, RootModel
-from pydantic.types import Json
+from pydantic import BaseModel, TypeAdapter
 from pydantic_handlebars import render
 
-from reactions.sdk.python.drasi.reaction.models.ChangeEvent import ChangeEvent
-from reactions.sdk.python.drasi.reaction.models.ChangeNotification import ChangeNotification
-from reactions.sdk.python.drasi.reaction.models.ChangeNotification import Op
-from reactions.sdk.python.drasi.reaction.models.ChangePayload import ChangePayload
-from reactions.sdk.python.drasi.reaction.models.ChangeSource import ChangeSource
-from reactions.sdk.python.drasi.reaction.models.ControlEvent import ControlEvent
-from reactions.sdk.python.drasi.reaction.sdk import DrasiReaction
+from drasi.reaction.models.ChangeEvent import ChangeEvent
+from drasi.reaction.models.ChangeNotification import ChangeNotification
+from drasi.reaction.models.ChangeNotification import Op
+from drasi.reaction.models.ChangePayload import ChangePayload
+from drasi.reaction.models.ChangeSource import ChangeSource
+from drasi.reaction.models.ControlEvent import ControlEvent
+from drasi.reaction.sdk import AsyncChangeEventFunc, AsyncControlEventFunc, DrasiReaction
+from drasi.reaction.utils import yaml_query_configs
+
+_OP_TO_PAYLOAD_SHAPE_FIELD = {
+    Op.i: "added",
+    Op.u: "updated",
+    Op.d: "deleted",
+}
 
 
-class PubSubPromptTemplate(BaseModel):
-    """
-    Template for generating messages to be published to Dapr pub/sub topics.
-    """
-
-    template: str  # The template string
-
-
-class PubSubConsumerConfig(BaseModel):
-    """
-    Configuration for a consumer of Drasi events.
-
-    Attributes:
-        pubsub (str): The name of the Dapr pubsub component.
-        topic (str): The name of the topic on which to publish events.
-        queryId (str): The Drasi query ID that this consumer is interested in.
-    """
-
-    pubsub: str
-    topic: str
-    queryId: str
-
-
-class PubSubQueryConfigEntry(BaseModel):
-    """
-    Configuration for a Drasi query that specifies how to route events to Dapr pub/sub topics.
-
-    Attributes:
-        consumers (Json[list[PubSubConsumerConfig]]): A stringified list of consumer configurations
-        added (PubSubPromptTemplate | None): Optional template for added events
-        updated (PubSubPromptTemplate | None): Optional template for updated events
-        deleted (PubSubPromptTemplate | None): Optional template for deleted events
-    """
-
-    consumers: Json[list[PubSubConsumerConfig]]
-    added: PubSubPromptTemplate | None = None
-    updated: PubSubPromptTemplate | None = None
-    deleted: PubSubPromptTemplate | None = None
-
-
-class PubSubQueryConfig(RootModel[dict[str, PubSubQueryConfigEntry]]):
-    """
-    Mapping of Drasi query IDs to their corresponding pub/sub routing configurations.
-    """
-
-    def __iter__(self):
-        return iter(self.root.keys())
-
-    def __getitem__(self, item):
-        if item in self.root:
-            return self.root[item]
-        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{item}'")
-    
-    def __getattr__(self, item):
-        if item in self.root:
-            return self.root[item]
-        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{item}'")
-    
-
+# TODO: should template and payload be separate?
 class PubSubPayload(BaseModel):
     """
     Payload for a message to be published to a Dapr pub/sub topic.
     Note: the shape currently matches `TriggerAction` from Dapr Agents.
 
     Attributes:
-        task (str): The task message
+        task (str): The task message as a template string.
     """
 
     task: str
+
+
+class PubSubConsumerConfig(BaseModel):
+    """
+    Configuration for a Drasi consumer.
+    If no payload shape is provided, an "unpacked" Drasi event will be published to the topic.
+
+    Attributes:
+        pubsub (str): The name of the Dapr pubsub component.
+        topic (str): The name of the topic on which to publish events.
+        added (PubSubPayload | None): Optional payload shape for added events.
+        updated (PubSubPayload | None): Optional payload shape for updated events.
+        deleted (PubSubPayload | None): Optional payload shape for deleted events.
+    """
+
+    pubsub: str
+    topic: str
+    added: PubSubPayload | None = None
+    updated: PubSubPayload | None = None
+    deleted: PubSubPayload | None = None
 
 
 class PubSubRouter():
@@ -114,16 +83,18 @@ class PubSubRouter():
     ) -> None:
         self._name = name
         self._dapr_client = dapr_client
-        self._reaction = DrasiReaction()
+        self._reaction = DrasiReaction(
+            on_change_event=self._make_on_change_event(),
+            on_control_event=self._make_on_control_event(),
+            parse_query_configs=yaml_query_configs,
+        )
+        self._query_config_adapter = TypeAdapter(dict[str, PubSubConsumerConfig])
 
-        self._reaction.on_change_event = self._make_on_change_event()
-        self._reaction.on_control_event = self._make_on_control_event()
 
-
-    def to_unpacked_events(event: ChangeEvent) -> list[ChangeNotification]:
+    def _to_unpacked_events(self, event: ChangeEvent) -> list[ChangeNotification]:
         """
-        Converts a single packed Drasi event (containing batched changes) into a flat list
-        of unpacked events, one per changed item.
+        Converts a single "packed" Drasi event (containing batched changes) into a flat list
+        of "unpacked" events, one per changed item.
 
         Assumptions:
         - addedResults items are plain "after" records
@@ -134,131 +105,125 @@ class PubSubRouter():
             queryId=event.queryId,
             ts_ms=event.sourceTimeMs,
         )
+        # TODO: events are not guaranteed to arrive in order of sequence number?
+        # Kept constant for now so validation works
+        seq = 0
 
         unpacked_events: list[ChangeNotification] = []
 
         for item in event.addedResults:
+            after = item.model_dump()
             unpacked_events.append(
                 ChangeNotification(
                     op=Op.i,
                     ts_ms=event.sourceTimeMs,
-                    payload=ChangePayload(source=source, before=None, after=item),
+                    seq=seq,
+                    payload=ChangePayload(source=source, before=None, after=after),
                 )
             )
 
         for item in event.updatedResults:
-            # item is expected to have .before / .after (or ["before"] / ["after"])
-            before = getattr(item, "before", None) or item.get("before")
-            after = getattr(item, "after", None) or item.get("after")
+            # Assume item has "before" and "after" attributes
+            before = item.before.model_dump() if item.before is not None else None
+            after = item.after.model_dump() if item.after is not None else None
             unpacked_events.append(
                 ChangeNotification(
                     op=Op.u,
                     ts_ms=event.sourceTimeMs,
+                    seq=seq,
                     payload=ChangePayload(source=source, before=before, after=after),
                 )
             )
 
         for item in event.deletedResults:
+            before = item.model_dump()
             unpacked_events.append(
                 ChangeNotification(
                     op=Op.d,
                     ts_ms=event.sourceTimeMs,
-                    payload=ChangePayload(source=source, before=item, after=None),
+                    seq=seq,
+                    payload=ChangePayload(source=source, before=before, after=None),
                 )
             )
 
         return unpacked_events
 
-    
-    def _publish_to_pubsub(self, pubsub_name: str, topic_name: str, message: str) -> None:
+ 
+    def _publish_to_pubsub(self, pubsub: str, topic: str, message: str) -> None:
         """
-        Publish a message to a Dapr pub/sub topic synchronously.
+        Publish a message to a Dapr pub/sub topic.
 
         Args:
-            pubsub_name (str): The name of the Dapr pubsub component.
-            topic_name (str): The name of the topic on which to publish the message.
+            pubsub (str): The name of the Dapr pubsub component.
+            topic (str): The name of the topic on which to publish the message.
             message (str): The message to publish.
         """
 
         self._dapr_client.publish_event(
-            pubsub_name,
-            topic_name,
+            pubsub,
+            topic,
             message,
             data_content_type="application/json",
         )
 
-    
-    def _make_payload(self, config: PubSubQueryConfig, event: ChangeNotification) -> PubSubPayload | None:
+
+    def _make_payload(self, consumer: PubSubConsumerConfig, event: ChangeNotification) -> PubSubPayload | ChangeNotification:
         """
         Apply a template to a Drasi event to generate a payload for Dapr pub/sub.
 
         Args:
-            config (PubSubQueryConfig): The query configuration containing the templates.
+            consumer (PubSubConsumerConfig): The consumer configuration containing the templates.
             event (ChangeNotification): The Drasi event to which the template is applied.
 
         Returns:
-            PubSubPayload | None: The generated payload, or None if no template is applicable.
+            PubSubPayload | ChangeNotification: The generated payload, or the original event if no template is applicable.
         """
+        
+        field = _OP_TO_PAYLOAD_SHAPE_FIELD.get(event.op)
+        template = getattr(consumer, field) if field else None
 
-        match event.op:
-            case Op.i if config.added:
-                template = config.added.template if config.added else None
-                context = {"after": event.payload.after.root, "queryId": event.payload.source.queryId}
-            case Op.u if config.updated:
-                template = config.updated.template if config.updated else None
-                context = {"before": event.payload.before.root, "after": event.payload.after.root, "queryId": event.payload.source.queryId}
-            case Op.d if config.deleted:
-                template = config.deleted.template if config.deleted else None
-                context = {"before": event.payload.before.root, "queryId": event.payload.source.queryId}
-            case _:
-                return
+        if template is None:
+            return event  # No applicable template, return the original event
 
-        task = render(template, context)
+        context = event.model_dump()
+        # Assume template always has a "task" field for now
+        task = render(template.task, context)
 
         return PubSubPayload(task=task)
 
 
-    def _make_on_change_event(self) -> Callable[[ChangeEvent, dict[str, Any] | None], None]:
-        def on_change_event(event: ChangeEvent, query_config: dict[str, Any] | None) -> None:
-            # Assume static query config is
-            #    query id:
-            #       consumers: list of pubsub, topic
-            #       added (optional): template
-            #       updated (optional): template
-            #       deleted (optional): template
-            
+    def _make_on_change_event(self) -> AsyncChangeEventFunc:
+        async def on_change_event(event: ChangeEvent, query_config: dict[str, Any] | None) -> None:
             if query_config is None:
                 return
-            
-            # Coerce query config to more usable form
-            config = PubSubQueryConfig.model_validate(query_config)
-
-            # Get the list of consumers that are subscribed to this query ID
-            subscribed_consumers = [
-                consumer for consumer in config.consumers if event.queryId == consumer.queryId
-            ]
 
             # Convert to unpacked form
-            unpacked_events = self.to_unpacked_events(event)
+            unpacked_events = self._to_unpacked_events(event)
+            
+            # Coerce query config to more usable form
+            config = self._query_config_adapter.validate_python(query_config)
+
+            # Get the list of consumers that are subscribed to this query ID
+            consumers = list(config.values())
 
             # Apply template to events based on event type (added, updated, deleted)
-            bindings: list[tuple[PubSubConsumerConfig, PubSubPayload]] = []
-            
+            bindings: list[tuple[PubSubConsumerConfig, PubSubPayload | ChangeNotification]] = []
+
             for payload in unpacked_events:
-                for consumer in subscribed_consumers:
-                    payload = self._make_payload(config, payload)
-                    if payload:
-                        bindings.append((consumer, payload))
+                for consumer in consumers:
+                    payload = self._make_payload(consumer, payload)
+                    bindings.append((consumer, payload))
 
             # Publish to Dapr pubsub
+            # TODO: parallelize this
             for consumer, payload in bindings:
                 self._publish_to_pubsub(consumer.pubsub, consumer.topic, payload.model_dump_json())
 
         return on_change_event
 
 
-    def _make_on_control_event(self) -> Callable[[ControlEvent, dict[str, Any] | None], None]:
-        def on_control_event(event: ControlEvent, query_config: dict[str, Any] | None) -> None:
+    def _make_on_control_event(self) -> AsyncControlEventFunc:
+        async def on_control_event(event: ControlEvent, query_config: dict[str, Any] | None) -> None:
             # TODO: implement
             pass
 

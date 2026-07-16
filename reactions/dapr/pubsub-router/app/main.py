@@ -14,21 +14,19 @@
 # limitations under the License.
 #
 
-import asyncio
-
 from runner import AppRunner
 
 
-async def main():
+def main():
     runner = AppRunner()
     try:
-        await runner.start()
+        runner.start()
     except Exception:
-        await runner.shutdown()
+        runner.shutdown()
 
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        main()
     except KeyboardInterrupt:
         pass

@@ -35,14 +35,14 @@ class AppRunner():
         )
 
 
-    async def start(self) -> None:
+    def start(self) -> None:
         """
         Start the runtime.
         """
         self._router.start()
 
 
-    async def shutdown(self) -> None:
+    def shutdown(self) -> None:
         """
         Shutdown the runtime (idempotent).
         """
