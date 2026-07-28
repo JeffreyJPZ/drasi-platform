@@ -14,8 +14,16 @@
 # limitations under the License.
 #
 
+import logging
+import sys
+
 from dapr.clients import DaprClient
 from fastmcp import FastMCP
+
+# Use stderror instead of stdout to avoid mixing with MCP server output
+logging.basicConfig(level=logging.DEBUG, stream=sys.stderr)
+
+logger = logging.getLogger(__name__)
 
 
 # TODO: we may want a tool executor instead but since our toolset is limited it may not be necessary
@@ -24,13 +32,14 @@ class DrasiQueryToolSet:
     A toolset for managing Drasi queries.
     """
 
-
     def __init__(self, dapr_client: DaprClient, mcp: FastMCP) -> None:
         self._dapr_client = dapr_client
 
         mcp.tool(self.subscribe)
         mcp.tool(self.unsubscribe)
         mcp.tool(self.list_queries)
+
+        logger.info("DrasiQueryToolSet initialized and tools registered with MCP")
 
 
     def subscribe(self, query_id: str, agent_id: str, pubsub_name: str, topic_name: str) -> None:
@@ -43,7 +52,8 @@ class DrasiQueryToolSet:
             pubsub_name (str): The name of the Dapr pubsub component.
             topic_name (str): The name of the topic on which the agent will receive messages.
         """
-        pass
+        logger.info(f"Subscribing agent {agent_id} to query {query_id} on pubsub {pubsub_name} and topic {topic_name}")
+        return f"Subscribed agent {agent_id} to query {query_id} on pubsub {pubsub_name} and topic {topic_name}"
 
 
     def unsubscribe(self, query_id: str, agent_id: str) -> None:
@@ -54,11 +64,13 @@ class DrasiQueryToolSet:
             query_id (str): The ID of the query to unsubscribe from.
             agent_id (str): The ID of the agent to unsubscribe.
         """
-        pass
+        logger.info(f"Unsubscribing agent {agent_id} from query {query_id}")
+        return f"Unsubscribed agent {agent_id} from query {query_id}"
 
 
     def list_queries(self) -> None:
         """
         List all queries.
         """
-        pass
+        logger.info("Listing all queries")
+        return "Queries: []"

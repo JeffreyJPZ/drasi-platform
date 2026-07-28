@@ -17,16 +17,9 @@
 from runner import AppRunner
 
 
-def main():
-    runner = AppRunner()
-    try:
-        runner.start()
-    except Exception:
-        runner.shutdown()
-
-
 if __name__ == "__main__":
     try:
-        main()
-    except KeyboardInterrupt:
-        pass
+        runner = AppRunner()
+        runner.start()
+    finally:
+        runner.shutdown()

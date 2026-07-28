@@ -14,7 +14,6 @@
 # limitations under the License.
 #
 
-from dataclasses import field
 from typing import Any
 
 from dapr.clients import DaprClient
@@ -75,11 +74,10 @@ class PubSubRouter():
     Dispatches Drasi events to Dapr pub/sub topics.
     """
 
-
     def __init__(
         self,
-        name: str,
         dapr_client: DaprClient,
+        name: str | None = "drasi-pubsub-router",
     ) -> None:
         self._name = name
         self._dapr_client = dapr_client

@@ -14,8 +14,11 @@
 # limitations under the License.
 #
 
+import multiprocessing as mp
+
 from dapr.clients import DaprClient
 
+from mcp_server import run_mcp_server
 from router import PubSubRouter
 
 
@@ -24,28 +27,39 @@ class AppRunner():
     Lifecycle and dependency management for the router and MCP server.
     """
 
-
     def __init__(self) -> None:
         # TODO: shutdown handlers
-        # TODO: MCP
         self._dapr_client = DaprClient()
         self._router = PubSubRouter(
-            name="dapr-pubsub-router",
             dapr_client=self._dapr_client,
         )
+        self._mcp_server = mp.Process(target=run_mcp_server, args=(), daemon=True)
 
 
     def start(self) -> None:
         """
         Start the runtime.
         """
+        self._mcp_server.start()
+        # Pubsub router must be started after since it blocks
         self._router.start()
 
 
     def shutdown(self) -> None:
         """
-        Shutdown the runtime (idempotent).
+        Shutdown the runtime in reverse order of instantiation (idempotent).
         """
+
+        if self._mcp_server:
+            try:
+                # TODO: make shutdown more graceful
+                self._mcp_server.terminate()
+                self._mcp_server.join(timeout=5)
+            finally:
+                if self._mcp_server.is_alive():
+                    self._mcp_server.kill()
+                    self._mcp_server.join(timeout=5)
+            self._mcp_server = None
         
         if self._router:
             try:
