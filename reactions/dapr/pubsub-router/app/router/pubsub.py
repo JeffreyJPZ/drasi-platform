@@ -17,7 +17,8 @@
 from typing import Any
 
 from dapr.clients import DaprClient
-from pydantic import BaseModel, TypeAdapter
+from fastapi import FastAPI
+from pydantic import TypeAdapter
 from pydantic_handlebars import render
 
 from drasi.reaction.models.ChangeEvent import ChangeEvent
@@ -29,44 +30,14 @@ from drasi.reaction.models.ControlEvent import ControlEvent
 from drasi.reaction.sdk import AsyncChangeEventFunc, AsyncControlEventFunc, DrasiReaction
 from drasi.reaction.utils import yaml_query_configs
 
+from subscription import SubscriptionRegistry
+from utils.types import PubSubPayload, PubSubConsumerConfig, ReactionConfig
+
 _OP_TO_PAYLOAD_SHAPE_FIELD = {
     Op.i: "added",
     Op.u: "updated",
     Op.d: "deleted",
 }
-
-
-# TODO: should template and payload be separate?
-class PubSubPayload(BaseModel):
-    """
-    Payload for a message to be published to a Dapr pub/sub topic.
-    Note: the shape currently matches `TriggerAction` from Dapr Agents.
-
-    Attributes:
-        task (str): The task message as a template string.
-    """
-
-    task: str
-
-
-class PubSubConsumerConfig(BaseModel):
-    """
-    Configuration for a Drasi consumer.
-    If no payload shape is provided, an "unpacked" Drasi event will be published to the topic.
-
-    Attributes:
-        pubsub (str): The name of the Dapr pubsub component.
-        topic (str): The name of the topic on which to publish events.
-        added (PubSubPayload | None): Optional payload shape for added events.
-        updated (PubSubPayload | None): Optional payload shape for updated events.
-        deleted (PubSubPayload | None): Optional payload shape for deleted events.
-    """
-
-    pubsub: str
-    topic: str
-    added: PubSubPayload | None = None
-    updated: PubSubPayload | None = None
-    deleted: PubSubPayload | None = None
 
 
 class PubSubRouter():
@@ -77,16 +48,53 @@ class PubSubRouter():
     def __init__(
         self,
         dapr_client: DaprClient,
+        app: FastAPI,
+        subscription_registry: SubscriptionRegistry,
         name: str | None = "drasi-pubsub-router",
     ) -> None:
+        """
+        Initializes a PubSubRouter instance.
+        
+        Args:
+            dapr_client (DaprClient): The Dapr client for interacting with Dapr.
+            app (FastAPI): The FastAPI application instance.
+            subscription_registry (SubscriptionRegistry): The subscription registry.
+            name (str | None): Optional name for the router. Defaults to "drasi-pubsub-router".
+        """
         self._name = name
         self._dapr_client = dapr_client
+        self._subscription_registry = subscription_registry
         self._reaction = DrasiReaction(
             on_change_event=self._make_on_change_event(),
             on_control_event=self._make_on_control_event(),
             parse_query_configs=yaml_query_configs,
+            app=app,
+            host="0.0.0.0",
         )
-        self._query_config_adapter = TypeAdapter(dict[str, PubSubConsumerConfig])
+        self._query_config_adapter = TypeAdapter(ReactionConfig)
+
+
+    @property
+    def reaction_config(self) -> ReactionConfig:
+        """
+        Get the current supported queries lazily.
+
+        Returns:
+            dict[str, QueryConfig]: A dictionary mapping query IDs to their corresponding information.
+        """
+        # TODO: needs to fallback to unpacked format
+        # TODO: may want to provide a better shape but would not be the same obj
+        return self._reaction.query_configs
+
+
+    def start(self) -> None:
+        """Start the router (blocking)."""
+        self._reaction.start()
+    
+        
+    def shutdown(self) -> None:
+        """Shutdown the router (idempotent)."""
+        pass
 
 
     def _to_unpacked_events(self, event: ChangeEvent) -> list[ChangeNotification]:
@@ -184,6 +192,7 @@ class PubSubRouter():
             return event  # No applicable template, return the original event
 
         context = event.model_dump()
+        # TODO: make this generalizable
         # Assume template always has a "task" field for now
         task = render(template.task, context)
 
@@ -195,21 +204,29 @@ class PubSubRouter():
             if query_config is None:
                 return
 
+            # TODO: check if payload shape is given and fill with defaults if needed
+
             # Convert to unpacked form
             unpacked_events = self._to_unpacked_events(event)
-            
-            # Coerce query config to more usable form
-            config = self._query_config_adapter.validate_python(query_config)
 
-            # Get the list of consumers that are subscribed to this query ID
-            consumers = list(config.values())
+            # Get all consumers for the query
+            all_consumers = await self._subscription_registry.get_subscriptions(event.queryId)
 
+            # Filter for consumers that are interested in this event type (if they have a payload shape field for it)
+            # TODO: don't hardcode event op index
+            op = unpacked_events[0].op
+            # TODO: make this responsibility of subscription registry?
+            # payload shape field may be `None`
+            consumers = [
+                consumer for consumer in all_consumers if getattr(consumer, _OP_TO_PAYLOAD_SHAPE_FIELD.get(op), None) is not None
+            ]
+    
             # Apply template to events based on event type (added, updated, deleted)
             bindings: list[tuple[PubSubConsumerConfig, PubSubPayload | ChangeNotification]] = []
 
-            for payload in unpacked_events:
+            for evt in unpacked_events:
                 for consumer in consumers:
-                    payload = self._make_payload(consumer, payload)
+                    payload = self._make_payload(consumer, evt)
                     bindings.append((consumer, payload))
 
             # Publish to Dapr pubsub
@@ -226,13 +243,3 @@ class PubSubRouter():
             pass
 
         return on_control_event
-
-
-    def start(self) -> None:
-        """Start the router (blocking)."""
-        self._reaction.start()
-
-    
-    def shutdown(self) -> None:
-        """Shutdown the router (idempotent)."""
-        pass

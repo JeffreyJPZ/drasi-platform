@@ -14,31 +14,51 @@
 # limitations under the License.
 #
 
-import asyncio
 import logging
-import sys
 
 from dapr.clients import DaprClient
 from fastmcp import FastMCP
 
 from mcp_server.tools import DrasiQueryToolSet
-
-# Use stderr instead of stdout to avoid mixing with MCP server output
-logging.basicConfig(level=logging.DEBUG, stream=sys.stderr)
+from subscription import SubscriptionRegistry
+from utils.types import ReactionConfig
 
 logger = logging.getLogger(__name__)
 
 
 class MCPServer:
     """
-    An MCP server that registers tools. Runs in a separate process.
+    An MCP server that registers tools.
     """
 
-    def __init__(self, name: str | None = "drasi-pubsub-router-mcp") -> None:
+    def __init__(self,
+        dapr_client: DaprClient,
+        mcp: FastMCP,
+        subscription_registry: SubscriptionRegistry,
+        reaction_config: ReactionConfig,
+        name: str | None = "drasi-pubsub-router-mcp"
+    ) -> None:
+        """
+        Initializes an MCPServer instance.
+
+        Args:
+            dapr_client (DaprClient): The Dapr client for interacting with Dapr.
+            mcp (FastMCP): The FastMCP instance.
+            subscription_registry (SubscriptionRegistry): The subscription registry.
+            reaction_config (ReactionConfig): The static configuration for the Drasi queries.
+            name (str | None): Optional name for the server. Defaults to "drasi-pubsub-router-mcp".
+        """
         self._name = name
-        self._dapr_client = DaprClient()
-        self._mcp = FastMCP(name=self._name)
-        self._tools = DrasiQueryToolSet(dapr_client=self._dapr_client, mcp=self._mcp)
+        self._dapr_client = dapr_client
+        self._mcp = mcp
+        self._subscription_registry = subscription_registry
+        self._reaction_config = reaction_config
+        self._tools = DrasiQueryToolSet(
+            dapr_client=dapr_client,
+            mcp=mcp,
+            subscription_registry=subscription_registry,
+            reaction_config=reaction_config,
+        )
 
         logger.info(f"MCPServer initialized with name: {self._name} and tools registered")
 
@@ -47,31 +67,11 @@ class MCPServer:
         """
         Start the MCP server.
         """
-        # TODO: make port configurable
-        asyncio.run(self._mcp.run_async(transport="http", host="0.0.0.0", port=9000))
+        pass
 
 
     def shutdown(self) -> None:
         """
         Shutdown the MCP server.
         """
-        if self._dapr_client:
-            try:
-                self._dapr_client.close()
-            except Exception:
-                pass
-            self._dapr_client = None
-
-        if self._mcp:
-            self._mcp = None
-
-
-def run_mcp_server():
-    """
-    Entry point for the MCP server process.
-    """
-    try:
-        server = MCPServer()
-        server.start()
-    finally:
-        server.shutdown()
+        pass
