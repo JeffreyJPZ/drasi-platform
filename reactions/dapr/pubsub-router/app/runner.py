@@ -1,5 +1,5 @@
 #
-# Copyright 2025 The Drasi Authors.
+# Copyright 2026 The Drasi Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ from fastapi import FastAPI
 from fastmcp import FastMCP
 from fastmcp.utilities.lifespan import combine_lifespans
 
+from utils.types import StateStoreConfig
 from mcp_server import MCPServer
 from router import PubSubRouter
 from subscription import SubscriptionRegistry
@@ -29,14 +30,23 @@ class AppRunner():
     Lifecycle and dependency management for the Dapr Pub/Sub Router.
     """
 
-    def __init__(self) -> None:
-        """Initialize an AppRunner instance."""
+    def __init__(self, state_store_config: StateStoreConfig | None = None) -> None:
+        """
+        Initialize an AppRunner instance.
+
+        Args:
+            state_store_config (StateStoreConfig): Configuration for the state store backend.
+        """
         # TODO: shutdown handlers
         self._dapr_client = DaprClient()
 
         self._ensure_pubsub(self._dapr_client)
 
-        self._subscription_registry = SubscriptionRegistry(dapr_client=self._dapr_client)
+        self._subscription_registry = SubscriptionRegistry(
+            dapr_client=self._dapr_client,
+            state_store_config=state_store_config or StateStoreConfig(),
+        )
+
         self._app = FastAPI(title="Drasi Pub/Sub Router")
         self._router = PubSubRouter(
             dapr_client=self._dapr_client,
@@ -46,7 +56,6 @@ class AppRunner():
         )
         self._mcp = FastMCP(name="drasi-pubsub-router-mcp")
         self._mcp_server = MCPServer(
-            dapr_client=self._dapr_client,
             mcp=self._mcp,
             pubsub_name=self._pubsub_name,
             subscription_registry=self._subscription_registry,

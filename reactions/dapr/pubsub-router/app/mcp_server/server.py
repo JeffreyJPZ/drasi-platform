@@ -1,5 +1,5 @@
 #
-# Copyright 2025 The Drasi Authors.
+# Copyright 2026 The Drasi Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,7 +32,6 @@ class MCPServer:
     """
 
     def __init__(self,
-        dapr_client: DaprClient,
         mcp: FastMCP,
         pubsub_name: str,
         subscription_registry: SubscriptionRegistry,
@@ -43,20 +42,13 @@ class MCPServer:
         Initialize an MCPServer instance.
 
         Args:
-            dapr_client (DaprClient): Injected Dapr client.
             mcp (FastMCP): The FastMCP server instance.
             subscription_registry (SubscriptionRegistry): The subscription registry.
             reaction_config (ReactionConfig): The static Drasi reaction configuration.
             name (str): The name of the server. Defaults to "drasi-pubsub-router-mcp".
         """
         self._name = name
-        self._dapr_client = dapr_client
-        self._mcp = mcp
-        self._pubsub_name = pubsub_name
-        self._subscription_registry = subscription_registry
-        self._reaction_config = reaction_config
         self._tools = DrasiQueryToolSet(
-            dapr_client=dapr_client,
             mcp=mcp,
             pubsub_name=pubsub_name,
             subscription_registry=subscription_registry,

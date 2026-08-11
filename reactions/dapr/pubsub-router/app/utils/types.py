@@ -1,5 +1,5 @@
 #
-# Copyright 2025 The Drasi Authors.
+# Copyright 2026 The Drasi Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,8 +14,21 @@
 # limitations under the License.
 #
 
-from typing import Annotated
+from typing import Annotated, Literal
 from pydantic import BaseModel, Field, RootModel
+
+
+class StateStoreConfig(BaseModel):
+    """
+    Configuration for a state store.
+
+    Attributes:
+        type (Literal["in-memory", "dapr"]): The state store backend to use. If omitted, defaults to "dapr".
+        store_name (str): The name of the Dapr state store component to use. Ignored if `type` is not "dapr".
+    """
+
+    type: Literal["in-memory", "dapr"] = Field(default="dapr")
+    store_name: str | None = None
 
 
 # TODO: should template and payload be separate?

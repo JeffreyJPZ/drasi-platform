@@ -1,5 +1,5 @@
 #
-# Copyright 2025 The Drasi Authors.
+# Copyright 2026 The Drasi Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,12 +15,12 @@
 #
 
 import logging
+from typing import Any
 
 from dapr.clients import DaprClient
 
-from stores.dapr import DaprStateStore
-from stores.memory import InMemoryStateStore
-from utils.types import PubSubConsumerConfig, QuerySubscriptionState
+from stores import DaprStateStore, InMemoryStateStore, StateStore
+from utils.types import PubSubConsumerConfig, QuerySubscriptionState, StateStoreConfig
 
 logger = logging.getLogger(__name__)
 
@@ -33,30 +33,20 @@ class SubscriptionRegistry():
     def __init__(
         self,
         dapr_client: DaprClient,
-        use_state_store: bool = True,  # TODO: inject state store instead
+        state_store_config: StateStoreConfig,
     ) -> None:
         """
         Initialize a SubscriptionRegistry instance.
 
         Args:
             dapr_client (DaprClient): Injected Dapr client.
-            use_state_store (bool): Whether to use a state store for persistent subscriptions. Defaults to True.
+            state_store_config (StateStoreConfig): Configuration for the state store backend.
         """
-        self._dapr_client = dapr_client
-        self._use_state_store = use_state_store
-        # TODO: make this a default factory for testing
-        self._state_model_cls = QuerySubscriptionState
-
-        # TODO: does this branching belong here?
-        if self._use_state_store:
-            self._state_store = DaprStateStore[self._state_model_cls](
-                dapr_client=dapr_client,
-                state_model_cls=self._state_model_cls,
-            )
-        else:
-            self._state_store = InMemoryStateStore[self._state_model_cls](
-                state_model_cls=self._state_model_cls,
-            )
+        self._state_store = self._make_subscription_state_store(
+            dapr_client=dapr_client,
+            state_model_cls=QuerySubscriptionState,
+            state_store_config=state_store_config
+        )
 
 
     async def get_subscription(self, query_id: str, consumer_id: str) -> PubSubConsumerConfig | None:
@@ -65,7 +55,7 @@ class SubscriptionRegistry():
 
         Args:
             query_id (str): The query ID for which the subscription is being retrieved.
-            consumer_id (str): The ID of the consumer whose subscription is being retrieved.
+            consumer_id (str): The consumer ID whose subscription is being retrieved.
         """
         state = await self._state_store.get_state(query_id)
         subscriptions = state.root if state is not None else {}
@@ -86,36 +76,123 @@ class SubscriptionRegistry():
         return list(subscriptions.values())
 
 
-    async def add_subscription(self, query_id: str, config: PubSubConsumerConfig) -> None:
+    async def upsert_subscription(
+        self,
+        query_id: str,
+        consumer_id: str,
+        config: PubSubConsumerConfig,
+    ) -> None:
         """
-        Add a subscription for a given query ID.
+        Create or update a subscription for a given query ID and consumer ID.
 
         Args:
             query_id (str): The query ID for which the subscription is being added.
+            consumer_id (str): The consumer ID whose subscription is being added.
             config (PubSubConsumerConfig): The configuration for the subscription containing a consumer ID.
         """
         state = await self._state_store.get_state(query_id)
         subscriptions = state.root if state is not None else {}
-        
-        if config.id in subscriptions:
-            return  # Subscription already exists
 
-        subscriptions[config.id] = config
+        existing = subscriptions.get(consumer_id, None)
+        config = config.model_copy(update={"id": consumer_id})
+        if existing is None:
+            subscriptions[consumer_id] = config
+        else:
+            subscriptions[consumer_id] = existing.model_copy(
+                update=config.model_dump(exclude_unset=True)
+            )
 
         await self._state_store.save_state(query_id, state)     
 
 
+    async def update_subscription(
+        self,
+        query_id: str,
+        consumer_id: str,
+        fields: dict[str, Any],
+    ) -> None:
+        """
+        Update an existing subscription for a given consumer ID.
+
+        Args:
+            query_id (str): The query ID for which the subscription is being updated.
+            consumer_id (str): The consumer ID whose subscription is being updated.
+            fields (dict[str, Any]): Partial subscription data to merge into the existing subscription.
+        """
+        state = await self._state_store.get_state(query_id)
+        subscriptions = state.root if state is not None else {}
+        existing_sub = subscriptions.get(consumer_id, None)
+
+        if existing_sub is None:
+            return
+
+        updated_sub = existing_sub.model_copy(update=fields)
+
+        # If all fields are None, remove the subscription entirely
+        if all(
+            getattr(updated_sub, field) is None for field in ("added", "updated", "deleted")  # TODO: make this an enum
+        ):
+            subscriptions.pop(consumer_id, None)
+            if subscriptions:
+                await self._state_store.save_state(query_id, state)
+            else:
+                await self._state_store.purge_state(query_id)
+            return
+
+        subscriptions[consumer_id] = updated_sub
+        await self._state_store.save_state(query_id, state)
+
+
     async def delete_subscription(self, query_id: str, consumer_id: str) -> None:
         """
-        Delete a subscription for a given consumer.
+        Delete a subscription for a given consumer ID.
 
         Args:
             query_id (str): The query ID for which the subscription is being deleted.
-            consumer_id (str): The ID of the consumer whose subscription is being deleted.
+            consumer_id (str): The consumer ID whose subscription is being deleted.
         """
         state = await self._state_store.get_state(query_id)
         subscriptions = state.root if state is not None else {}
 
         subscriptions.pop(consumer_id, None)
 
-        await self._state_store.save_state(query_id, state)
+        if subscriptions:
+            await self._state_store.save_state(query_id, state)
+        else:
+            await self._state_store.purge_state(query_id)
+
+
+    def _make_subscription_state_store(
+        self,
+        *,
+        dapr_client: DaprClient,
+        state_model_cls: type[QuerySubscriptionState],
+        state_store_config: StateStoreConfig,
+    ) -> StateStore[QuerySubscriptionState]:
+        """
+        Create a state store instance based on the configuration.
+
+        Args:
+            dapr_client (DaprClient): Injected Dapr client.
+            state_model_cls (type[QuerySubscriptionState]): The state model class.
+            state_store_config (StateStoreConfig): Configuration for the state store backend.
+    
+        Returns:
+            StateStore[QuerySubscriptionState]: The state store instance.
+
+        Raises:
+            ValueError: If the state store type is unsupported.
+        """
+        match state_store_config.type:
+            case "dapr":
+                return DaprStateStore[state_model_cls](
+                    dapr_client=dapr_client,
+                    state_model_cls=state_model_cls,
+                    store_name=state_store_config.store_name,
+                )
+            case "in-memory":
+                return InMemoryStateStore[state_model_cls](
+                    state_model_cls=state_model_cls,
+                )
+            case _:
+                raise ValueError(f"Unsupported state store type: {state_store_config.type}")

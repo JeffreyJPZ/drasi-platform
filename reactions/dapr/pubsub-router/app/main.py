@@ -1,5 +1,5 @@
 #
-# Copyright 2025 The Drasi Authors.
+# Copyright 2026 The Drasi Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ from runner import AppRunner
 
 def main() -> None:
     runner = None
+    # TODO: support persistent and in-memory backends via config
     try:
         runner = AppRunner()
         runner.start()

@@ -1,5 +1,5 @@
 #
-# Copyright 2025 The Drasi Authors.
+# Copyright 2026 The Drasi Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -57,7 +57,7 @@ class PubSubRouter():
         Initialize a PubSubRouter instance.
         
         Args:
-            dapr_client (DaprClient): The Dapr client for interacting with Dapr.
+            dapr_client (DaprClient): Injected Dapr client.
             app (FastAPI): The FastAPI application instance.
             pubsub_name (str): The name of the Dapr pub/sub component.
             subscription_registry (SubscriptionRegistry): The subscription registry.
