@@ -30,40 +30,42 @@ class AppRunner():
     """
 
     def __init__(self) -> None:
-        """Initializes an AppRunner instance."""
+        """Initialize an AppRunner instance."""
         # TODO: shutdown handlers
         self._dapr_client = DaprClient()
-        self._subscription_registry = SubscriptionRegistry()
+
+        self._ensure_pubsub(self._dapr_client)
+
+        self._subscription_registry = SubscriptionRegistry(dapr_client=self._dapr_client)
         self._app = FastAPI(title="Drasi Pub/Sub Router")
         self._router = PubSubRouter(
             dapr_client=self._dapr_client,
             app=self._app,
+            pubsub_name=self._pubsub_name,
             subscription_registry=self._subscription_registry,
         )
         self._mcp = FastMCP(name="drasi-pubsub-router-mcp")
         self._mcp_server = MCPServer(
             dapr_client=self._dapr_client,
             mcp=self._mcp,
+            pubsub_name=self._pubsub_name,
             subscription_registry=self._subscription_registry,
             reaction_config=self._router.reaction_config,
         )
-        self._wire_routes(self._mcp)
+
+        self._combine_routes(self._app, self._mcp)
         
 
 
     def start(self) -> None:
-        """
-        Start the runtime.
-        """
+        """Start the runtime."""
         self._mcp_server.start()
         # Router must be started last as it blocks
         self._router.start()
 
 
     def shutdown(self) -> None:
-        """
-        Shutdown the runtime in reverse order of instantiation.
-        """
+        """Shutdown the runtime in reverse order of instantiation (idempotent)."""
         if self._router:
             try:
                 self._router.shutdown()
@@ -86,9 +88,36 @@ class AppRunner():
             self._dapr_client = None
 
 
-    def _wire_routes(self, mcp: FastMCP) -> None:
-        """Wire MCP routes onto the shared FastAPI app."""
+    def _ensure_pubsub(self, dapr_client: DaprClient) -> None:
+        """
+        Ensure that a Dapr pubsub component is available (first-found wins).
+
+        Args:
+            dapr_client (DaprClient): The runner's Dapr client instance.
+
+        Raises:
+            RuntimeError: If no Dapr pubsub component is found.
+        """
+        metadata = dapr_client.get_metadata()
+        registered_components = metadata.registered_components or []
+
+        for component in registered_components:
+            if "pubsub" in component.type.lower():
+                self._pubsub_name = component.name
+                return
+
+        raise RuntimeError("No Dapr pubsub component found. Please ensure that a pubsub component is registered with the Dapr sidecar.")
+
+
+    def _combine_routes(self, app: FastAPI, mcp: FastMCP) -> None:
+        """
+        Wire MCP routes onto the shared FastAPI app.
+
+        Args:
+            app (FastAPI): The runner's FastAPI app instance.
+            mcp (FastMCP): The runner's FastMCP server instance containing MCP routes.
+        """
         mcp_app = mcp.http_app(path="/mcp")
 
-        self._app.router.routes.extend([*mcp_app.routes])
-        self._app.router.lifespan_context = combine_lifespans(self._app.router.lifespan_context, mcp_app.lifespan)
+        app.router.routes.extend([*mcp_app.routes])
+        app.router.lifespan_context = combine_lifespans(app.router.lifespan_context, mcp_app.lifespan)

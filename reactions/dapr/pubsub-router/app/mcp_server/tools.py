@@ -36,19 +36,23 @@ class DrasiQueryToolSet:
         self,
         dapr_client: DaprClient,
         mcp: FastMCP,
+        pubsub_name: str,
         subscription_registry: SubscriptionRegistry,
         reaction_config: ReactionConfig,
     ) -> None:
         """
-        Initializes a DrasiQueryToolSet instance.
+        Initialize a DrasiQueryToolSet instance.
 
         Args:
-            dapr_client (DaprClient): The Dapr client for interacting with Dapr.
-            mcp (FastMCP): The FastMCP instance.
+            dapr_client (DaprClient): Injected Dapr client.
+            mcp (FastMCP): The FastMCP server instance.
+            pubsub_name (str): The name of the Dapr pub/sub component.
             subscription_registry (SubscriptionRegistry): The subscription registry.
-            reaction_config (ReactionConfig): The static configuration for the Drasi queries.
+            reaction_config (ReactionConfig): The static Drasi reaction configuration.
         """
+        # TODO: remove dapr client here as its not necessary
         self._dapr_client = dapr_client
+        self._pubsub_name = pubsub_name
         self._subscription_registry = subscription_registry
         self._reaction_config = reaction_config
 
@@ -60,22 +64,21 @@ class DrasiQueryToolSet:
         logger.info("DrasiQueryToolSet initialized and tools registered with MCP")
 
 
-    async def subscribe(self, query_id: str, agent_id: str, pubsub_name: str, topic_name: str) -> str:
+    async def subscribe(self, query_id: str, agent_id: str, topic: str) -> str:
         """
-        Subscribe an agent to a Drasi query on a given pub/sub component and topic.
+        Subscribe an agent to a Drasi query on a given pub/sub topic.
 
         Args:
             query_id (str): The ID of the query to subscribe to.
             agent_id (str): The ID of the agent making the subscription.
-            pubsub_name (str): The name of the Dapr pubsub component.
-            topic_name (str): The name of the topic on which the agent will receive messages.
+            topic (str): The name of the topic on which the agent will receive messages.
         """
-        logger.info(f"Subscribing agent '{agent_id}' to query '{query_id}' on (pubsub '{pubsub_name}', topic '{topic_name}')")
+        logger.info(f"Subscribing agent '{agent_id}' to query '{query_id}' on (pubsub '{self._pubsub_name}', topic '{topic}')")
 
         # TODO: validate query_id exists in reaction_config
 
-        # TODO: clean this up; agents may only be interested in certain types of events, maybe use op type?
-        # Only payload shape fields for event types that are defined in the reaction config for this query
+        # TODO: support fine-grained subscriptions (added, updated, deleted)
+        # also, should shape be per-agent?
         added = self._reaction_config.get(query_id, {}).get("added", None)
         updated = self._reaction_config.get(query_id, {}).get("updated", None)
         deleted = self._reaction_config.get(query_id, {}).get("deleted", None)
@@ -84,15 +87,14 @@ class DrasiQueryToolSet:
             query_id=query_id,
             config=PubSubConsumerConfig(
                 id=agent_id,
-                pubsub=pubsub_name,
-                topic=topic_name,
+                topic=topic,
                 added=PubSubPayload.model_validate(added) if added is not None else None,
                 updated=PubSubPayload.model_validate(updated) if updated is not None else None,
                 deleted=PubSubPayload.model_validate(deleted) if deleted is not None else None,
             )
         )
     
-        return f"Agent '{agent_id}' successfully subscribed to query '{query_id}' on (pubsub '{pubsub_name}', topic '{topic_name}')"
+        return f"Agent '{agent_id}' successfully subscribed to query '{query_id}' on (pubsub '{self._pubsub_name}', topic '{topic}')"
 
 
     async def unsubscribe(self, query_id: str, agent_id: str) -> str:
@@ -107,7 +109,7 @@ class DrasiQueryToolSet:
 
         # TODO: validate query_id exists in reaction_config
 
-        await self._subscription_registry.remove_subscription(
+        await self._subscription_registry.delete_subscription(
             query_id=query_id,
             consumer_id=agent_id
         )

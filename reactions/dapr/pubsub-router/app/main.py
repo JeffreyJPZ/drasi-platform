@@ -17,9 +17,15 @@
 from runner import AppRunner
 
 
-if __name__ == "__main__":
+def main() -> None:
+    runner = None
     try:
         runner = AppRunner()
         runner.start()
     finally:
-        runner.shutdown()
+        if runner:
+            runner.shutdown()
+
+
+if __name__ == "__main__":
+    main()

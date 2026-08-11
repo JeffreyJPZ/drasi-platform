@@ -14,7 +14,9 @@
 # limitations under the License.
 #
 
-from pydantic import BaseModel
+from typing import Annotated
+from pydantic import BaseModel, Field, RootModel
+
 
 # TODO: should template and payload be separate?
 class PubSubPayload(BaseModel):
@@ -51,6 +53,7 @@ class QueryConfig(BaseModel):
     deleted: PubSubPayload | None = None
 
 
+# Static configuration — matches the shape of the reaction YAML
 ReactionConfig = dict[str, QueryConfig]
 
 
@@ -60,7 +63,6 @@ class PubSubConsumerConfig(BaseModel):
 
     Attributes:
         id (str): A unique identifier for the consumer.
-        pubsub (str): The name of the Dapr pubsub component.
         topic (str): The name of the topic on which to publish events.
         added (PubSubPayload | None): Optional payload shape for added events. Resolved with the static config if omitted.
         updated (PubSubPayload | None): Optional payload shape for updated events. Resolved with the static config if omitted.
@@ -68,8 +70,14 @@ class PubSubConsumerConfig(BaseModel):
     """
 
     id: str
-    pubsub: str
     topic: str
     added: PubSubPayload | None = None
     updated: PubSubPayload | None = None
     deleted: PubSubPayload | None = None
+
+
+# TODO: how can we optimize this?
+# Entries are maps of subscriber ID to PubSubConsumerConfig
+QuerySubscriptionState = RootModel[
+    Annotated[dict[str, PubSubConsumerConfig], Field(default_factory=dict)]
+]

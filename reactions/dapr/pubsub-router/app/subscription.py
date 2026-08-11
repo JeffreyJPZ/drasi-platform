@@ -14,92 +14,108 @@
 # limitations under the License.
 #
 
-import asyncio
+import logging
 
-from utils.types import PubSubConsumerConfig
+from dapr.clients import DaprClient
+
+from stores.dapr import DaprStateStore
+from stores.memory import InMemoryStateStore
+from utils.types import PubSubConsumerConfig, QuerySubscriptionState
+
+logger = logging.getLogger(__name__)
 
 
 class SubscriptionRegistry():
     """
-    Manages subscriptions for the Dapr Pub/Sub Router.
+    Subscription management for the Dapr Pub/Sub Router.
     """
 
-    def __init__(self) -> None:
-        """Initializes a SubscriptionRegistry instance."""
-        # TODO: use sorted lists?
-        self._lock = asyncio.Lock()
-        self._subscriptions: dict[str, list[PubSubConsumerConfig]] = {}
+    def __init__(
+        self,
+        dapr_client: DaprClient,
+        use_state_store: bool = True,  # TODO: inject state store instead
+    ) -> None:
+        """
+        Initialize a SubscriptionRegistry instance.
+
+        Args:
+            dapr_client (DaprClient): Injected Dapr client.
+            use_state_store (bool): Whether to use a state store for persistent subscriptions. Defaults to True.
+        """
+        self._dapr_client = dapr_client
+        self._use_state_store = use_state_store
+        # TODO: make this a default factory for testing
+        self._state_model_cls = QuerySubscriptionState
+
+        # TODO: does this branching belong here?
+        if self._use_state_store:
+            self._state_store = DaprStateStore[self._state_model_cls](
+                dapr_client=dapr_client,
+                state_model_cls=self._state_model_cls,
+            )
+        else:
+            self._state_store = InMemoryStateStore[self._state_model_cls](
+                state_model_cls=self._state_model_cls,
+            )
 
 
     async def get_subscription(self, query_id: str, consumer_id: str) -> PubSubConsumerConfig | None:
         """
-        Retrieves a subscription for a given query ID and consumer ID.
+        Get a subscription for a given query ID and consumer ID.
 
         Args:
             query_id (str): The query ID for which the subscription is being retrieved.
             consumer_id (str): The ID of the consumer whose subscription is being retrieved.
         """
-        async with self._lock:
-            consumers = self._subscriptions.get(query_id, [])
-            if not consumers:
-                return None
+        state = await self._state_store.get_state(query_id)
+        subscriptions = state.root if state is not None else {}
 
-            for consumer in consumers:
-                if consumer.id == consumer_id:
-                    # TODO: make this a read-only copy
-                    return consumer
-
-        return None
+        return subscriptions.get(consumer_id, None)
 
 
     async def get_subscriptions(self, query_id: str) -> list[PubSubConsumerConfig]:
         """
-        Retrieves a subscription for a given query ID.
+        Get all subscriptions for a given query ID.
 
         Args:
             query_id (str): The query ID for which the subscription is being retrieved.
         """
-        async with self._lock:
-            return self._subscriptions.get(query_id, [])
+        state = await self._state_store.get_state(query_id)
+        subscriptions = state.root if state is not None else {}
+        
+        return list(subscriptions.values())
 
 
     async def add_subscription(self, query_id: str, config: PubSubConsumerConfig) -> None:
         """
-        Adds a subscription for a given query ID.
+        Add a subscription for a given query ID.
 
         Args:
             query_id (str): The query ID for which the subscription is being added.
-            config (PubSubConsumerConfig): The configuration for the subscription.
+            config (PubSubConsumerConfig): The configuration for the subscription containing a consumer ID.
         """
-        async with self._lock:
-            if query_id not in self._subscriptions:
-                self._subscriptions[query_id] = []
-            self._subscriptions[query_id].append(config)
+        state = await self._state_store.get_state(query_id)
+        subscriptions = state.root if state is not None else {}
+        
+        if config.id in subscriptions:
+            return  # Subscription already exists
+
+        subscriptions[config.id] = config
+
+        await self._state_store.save_state(query_id, state)     
 
 
-
-    async def remove_subscription(self, query_id: str, consumer_id: str) -> None:
+    async def delete_subscription(self, query_id: str, consumer_id: str) -> None:
         """
-        Removes a subscription for a given consumer.
+        Delete a subscription for a given consumer.
 
         Args:
-            query_id (str): The query ID for which the subscription is being removed.
-            consumer_id (str): The ID of the consumer whose subscription is being removed.
+            query_id (str): The query ID for which the subscription is being deleted.
+            consumer_id (str): The ID of the consumer whose subscription is being deleted.
         """
-        async with self._lock:
-            consumers = self._subscriptions.get(query_id)
-            if consumers is None:
-                return
+        state = await self._state_store.get_state(query_id)
+        subscriptions = state.root if state is not None else {}
 
-            # TODO: optimize this
-            self._subscriptions[query_id] = [
-                consumer for consumer in consumers if consumer.id != consumer_id
-            ]
+        subscriptions.pop(consumer_id, None)
 
-
-    async def purge_subscriptions(self) -> None:
-        """
-        Purges all subscriptions.
-        """
-        async with self._lock:
-            self._subscriptions.clear()
+        await self._state_store.save_state(query_id, state)

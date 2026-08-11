@@ -34,28 +34,31 @@ class MCPServer:
     def __init__(self,
         dapr_client: DaprClient,
         mcp: FastMCP,
+        pubsub_name: str,
         subscription_registry: SubscriptionRegistry,
         reaction_config: ReactionConfig,
-        name: str | None = "drasi-pubsub-router-mcp"
+        name: str = "drasi-pubsub-router-mcp"
     ) -> None:
         """
-        Initializes an MCPServer instance.
+        Initialize an MCPServer instance.
 
         Args:
-            dapr_client (DaprClient): The Dapr client for interacting with Dapr.
-            mcp (FastMCP): The FastMCP instance.
+            dapr_client (DaprClient): Injected Dapr client.
+            mcp (FastMCP): The FastMCP server instance.
             subscription_registry (SubscriptionRegistry): The subscription registry.
-            reaction_config (ReactionConfig): The static configuration for the Drasi queries.
-            name (str | None): Optional name for the server. Defaults to "drasi-pubsub-router-mcp".
+            reaction_config (ReactionConfig): The static Drasi reaction configuration.
+            name (str): The name of the server. Defaults to "drasi-pubsub-router-mcp".
         """
         self._name = name
         self._dapr_client = dapr_client
         self._mcp = mcp
+        self._pubsub_name = pubsub_name
         self._subscription_registry = subscription_registry
         self._reaction_config = reaction_config
         self._tools = DrasiQueryToolSet(
             dapr_client=dapr_client,
             mcp=mcp,
+            pubsub_name=pubsub_name,
             subscription_registry=subscription_registry,
             reaction_config=reaction_config,
         )
@@ -64,14 +67,10 @@ class MCPServer:
 
 
     def start(self) -> None:
-        """
-        Start the MCP server.
-        """
+        """Start the MCP server."""
         pass
 
 
     def shutdown(self) -> None:
-        """
-        Shutdown the MCP server.
-        """
+        """Shutdown the MCP server."""
         pass

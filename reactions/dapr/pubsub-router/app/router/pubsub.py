@@ -49,20 +49,23 @@ class PubSubRouter():
         self,
         dapr_client: DaprClient,
         app: FastAPI,
+        pubsub_name: str,
         subscription_registry: SubscriptionRegistry,
-        name: str | None = "drasi-pubsub-router",
+        name: str = "drasi-pubsub-router",
     ) -> None:
         """
-        Initializes a PubSubRouter instance.
+        Initialize a PubSubRouter instance.
         
         Args:
             dapr_client (DaprClient): The Dapr client for interacting with Dapr.
             app (FastAPI): The FastAPI application instance.
+            pubsub_name (str): The name of the Dapr pub/sub component.
             subscription_registry (SubscriptionRegistry): The subscription registry.
-            name (str | None): Optional name for the router. Defaults to "drasi-pubsub-router".
+            name (str): The name of the router. Defaults to "drasi-pubsub-router".
         """
         self._name = name
         self._dapr_client = dapr_client
+        self._pubsub_name = pubsub_name
         self._subscription_registry = subscription_registry
         self._reaction = DrasiReaction(
             on_change_event=self._make_on_change_event(),
@@ -155,18 +158,18 @@ class PubSubRouter():
         return unpacked_events
 
  
-    def _publish_to_pubsub(self, pubsub: str, topic: str, message: str) -> None:
+    def _publish_to_pubsub(self, pubsub_name: str, topic: str, message: str) -> None:
         """
         Publish a message to a Dapr pub/sub topic.
 
         Args:
-            pubsub (str): The name of the Dapr pubsub component.
+            pubsub_name (str): The name of the Dapr pubsub component.
             topic (str): The name of the topic on which to publish the message.
             message (str): The message to publish.
         """
 
         self._dapr_client.publish_event(
-            pubsub,
+            pubsub_name,
             topic,
             message,
             data_content_type="application/json",
@@ -208,6 +211,8 @@ class PubSubRouter():
 
             # Convert to unpacked form
             unpacked_events = self._to_unpacked_events(event)
+            if not unpacked_events:
+                return
 
             # Get all consumers for the query
             all_consumers = await self._subscription_registry.get_subscriptions(event.queryId)
@@ -232,7 +237,7 @@ class PubSubRouter():
             # Publish to Dapr pubsub
             # TODO: parallelize this
             for consumer, payload in bindings:
-                self._publish_to_pubsub(consumer.pubsub, consumer.topic, payload.model_dump_json())
+                self._publish_to_pubsub(self._pubsub_name, consumer.topic, payload.model_dump_json())
 
         return on_change_event
 
