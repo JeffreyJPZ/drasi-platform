@@ -14,8 +14,18 @@
 # limitations under the License.
 #
 
+from enum import StrEnum
 from typing import Annotated, Literal
+
 from pydantic import BaseModel, Field, RootModel
+
+
+class Operation(StrEnum):
+    """Enumeration of supported Drasi operations."""
+
+    ADDED = "added"
+    UPDATED = "updated"
+    DELETED = "deleted"
 
 
 class StateStoreConfig(BaseModel):
@@ -31,7 +41,7 @@ class StateStoreConfig(BaseModel):
     store_name: str | None = None
 
 
-# TODO: should template and payload be separate?
+# TODO: should "packed" events be supported?
 class PubSubPayload(BaseModel):
     """
     Payload for a message to be published to a Dapr pub/sub topic.
@@ -89,8 +99,7 @@ class PubSubConsumerConfig(BaseModel):
     deleted: PubSubPayload | None = None
 
 
-# TODO: how can we optimize this?
-# Entries are maps of subscriber ID to PubSubConsumerConfig
+# TODO: can this be optimized?
 QuerySubscriptionState = RootModel[
     Annotated[dict[str, PubSubConsumerConfig], Field(default_factory=dict)]
 ]

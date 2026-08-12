@@ -19,6 +19,9 @@ from typing import Generic, TypeVar
 from pydantic import BaseModel
 
 TState = TypeVar("TState", bound=BaseModel)
+"""
+The state model class used for validation. Must not take any required arguments.
+"""
 
 
 # TODO: does this need to be parameterized?
@@ -38,7 +41,7 @@ class StateStore(Generic[TState]):
         Initialize a StateStore instance.
 
         Args:
-            state_model_cls (type[TState]): The state model class used for validation.
+            state_model_cls (type[TState]): The state model class used for validation. Must not take any required arguments.
             state_key_prefix (str | None): Optional prefix for state keys.
             name (str | None): Optional name of the state store. Defaults to "drasi-pubsub-router-store" if omitted.
         """

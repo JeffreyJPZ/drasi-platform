@@ -16,19 +16,14 @@
 
 import asyncio
 import logging
-from typing import Literal
 
 from fastmcp import FastMCP
 
 from subscription import SubscriptionRegistry
-from utils.types import PubSubConsumerConfig, PubSubPayload, QueryConfig, ReactionConfig
+from utils.types import Operation, PubSubConsumerConfig, PubSubPayload, QueryConfig, ReactionConfig
+from utils.validation import normalize_operations
 
 logger = logging.getLogger(__name__)
-
-# TODO: make this an enum
-type Operation = Literal["added", "updated", "deleted"]
-
-_OPERATION_FIELDS: tuple[Operation, ...] = ("added", "updated", "deleted")
 
 
 # TODO: we may want a tool executor instead but since our toolset is limited it may not be necessary
@@ -65,37 +60,6 @@ class DrasiQueryToolSet:
         logger.info("DrasiQueryToolSet initialized and tools registered with MCP")
 
 
-    def _normalize_operations(self, operations: str | list[str] | None) -> list[Operation]:
-        """
-        Normalize operation input to a deduplicated ordered list of subscription fields.
-
-        Args:
-            operations (str | list[str] | None): The operations to normalize. None means all operations.
-        
-        Returns:
-            list[Operation]: A deduplicated ordered list of normalized operations.
-        """
-        if operations is None:
-            return list(_OPERATION_FIELDS)
-
-        raw_operations = [operations] if isinstance(operations, str) else list(operations)
-        normalized_operations: list[Operation] = []
-
-        for operation in raw_operations:
-            normalized_operation = operation.strip().lower()
-            if normalized_operation not in _OPERATION_FIELDS:
-                raise ValueError(
-                    f"Unsupported operation '{operation}'. Expected one of: {', '.join(_OPERATION_FIELDS)}"
-                )
-            if normalized_operation not in normalized_operations:
-                normalized_operations.append(normalized_operation)
-
-        if not normalized_operations:
-            raise ValueError("operations must not be empty")
-
-        return normalized_operations
-
-
     def _get_query_payload_template(
         self,
         query_config: QueryConfig,
@@ -129,13 +93,14 @@ class DrasiQueryToolSet:
             query_id (str): The ID of the query to subscribe to.
             agent_id (str): The ID of the agent making the subscription.
             topic (str): The name of the topic on which the agent will receive messages.
-            operations (str | list[str] | None): The operations to subscribe to. None means all operations.
+            operations (str | list[str] | None): The operations to subscribe to ("added", "updated", "deleted").
+                If omitted, all operations are subscribed to.
         """
-        requested_operations = self._normalize_operations(operations)
+        normalized_operations = normalize_operations(operations)
         logger.info(
             f"Subscribing agent '{agent_id}' "
             f"to query '{query_id}' "
-            f"on (pubsub '{self._pubsub_name}', topic '{topic}', operations={requested_operations})",
+            f"on (pubsub '{self._pubsub_name}', topic '{topic}', operations={normalized_operations})",
         )
 
         query_config = self._reaction_config.get(query_id)
@@ -146,7 +111,7 @@ class DrasiQueryToolSet:
             "id": agent_id,
             "topic": topic,
         }
-        for operation in requested_operations:
+        for operation in normalized_operations:
             consumer_config_kwargs[operation] = self._get_query_payload_template(query_config, operation)
 
         await self._subscription_registry.upsert_subscription(
@@ -157,7 +122,7 @@ class DrasiQueryToolSet:
     
         return (
             f"Agent '{agent_id}' successfully subscribed to query '{query_id}' "
-            f"on (pubsub '{self._pubsub_name}', topic '{topic}', operations={requested_operations})"
+            f"on (pubsub '{self._pubsub_name}', topic '{topic}', operations={normalized_operations})"
         )
 
 
@@ -173,11 +138,12 @@ class DrasiQueryToolSet:
         Args:
             query_id (str): The ID of the query to unsubscribe from.
             agent_id (str): The ID of the agent to unsubscribe.
-            operations (str | list[str] | None): The operations to unsubscribe from. None means all operations.
+            operations (str | list[str] | None): The operations to unsubscribe from ("added", "updated", "deleted").
+                If omitted, all operations are unsubscribed from.
         """
-        requested_operations = self._normalize_operations(operations)
+        normalized_operations = normalize_operations(operations)
         logger.info(
-            f"Unsubscribing agent '{agent_id}' from query '{query_id}' for operations={requested_operations}",
+            f"Unsubscribing agent '{agent_id}' from query '{query_id}' for operations={normalized_operations}",
         )
 
         if self._reaction_config.get(query_id) is None:
@@ -191,10 +157,10 @@ class DrasiQueryToolSet:
         if existing_subscription is None:
             return (
                 f"Agent '{agent_id}' successfully unsubscribed from query '{query_id}' "
-                f"for operations={requested_operations}"
+                f"for operations={normalized_operations}"
             )
 
-        updates = {operation: None for operation in requested_operations}
+        updates = {operation: None for operation in normalized_operations}
         await self._subscription_registry.update_subscription(
             query_id=query_id,
             consumer_id=agent_id,
@@ -203,7 +169,7 @@ class DrasiQueryToolSet:
 
         return (
             f"Agent '{agent_id}' successfully unsubscribed from query '{query_id}' "
-            f"for operations={requested_operations}"
+            f"for operations={normalized_operations}"
         )
 
 
@@ -225,8 +191,6 @@ class DrasiQueryToolSet:
         """
         logger.info("Listing all subscriptions")
 
-        # TODO: optimize
-        # Check all query IDs
         subscription_tasks = [self._subscription_registry.get_subscription(query_id, agent_id) for query_id in self._reaction_config.keys()]
         results = await asyncio.gather(*subscription_tasks)
 

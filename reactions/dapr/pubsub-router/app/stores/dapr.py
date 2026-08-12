@@ -14,6 +14,10 @@
 # limitations under the License.
 #
 
+# Adapted from Dapr Agents:
+# https://github.com/dapr/dapr-agents/blob/29dee4b9418e50f5bb6c0f434a154284accb00d2/dapr_agents/agents/components.py
+# https://github.com/dapr/dapr-agents/blob/29dee4b9418e50f5bb6c0f434a154284accb00d2/dapr_agents/storage/daprstores/stateservice.py
+
 import json
 import logging
 import random
@@ -46,7 +50,7 @@ class DaprStateStore(StateStore[TState]):
 
         Args:
             dapr_client (DaprClient): Injected Dapr client.
-            state_model_cls (type[TState]): The state model class used for validation.
+            state_model_cls (type[TState]): The state model class used for validation. Must not take any required arguments.
             state_key_prefix (str | None): Optional prefix for state keys.
             name (str | None): Optional state store name. Defaults to "drasi-pubsub-router-store" if omitted.
         """

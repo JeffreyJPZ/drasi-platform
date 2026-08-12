@@ -31,13 +31,7 @@ from drasi.reaction.sdk import AsyncChangeEventFunc, AsyncControlEventFunc, Dras
 from drasi.reaction.utils import yaml_query_configs
 
 from subscription import SubscriptionRegistry
-from utils.types import PubSubPayload, PubSubConsumerConfig, ReactionConfig
-
-_OP_TO_PAYLOAD_SHAPE_FIELD = {
-    Op.i: "added",
-    Op.u: "updated",
-    Op.d: "deleted",
-}
+from utils.types import Operation, PubSubPayload, PubSubConsumerConfig, ReactionConfig
 
 
 class PubSubRouter():
@@ -85,8 +79,6 @@ class PubSubRouter():
         Returns:
             dict[str, QueryConfig]: A dictionary mapping query IDs to their corresponding information.
         """
-        # TODO: needs to fallback to unpacked format
-        # TODO: may want to provide a better shape but would not be the same obj
         return self._reaction.query_configs
 
 
@@ -98,6 +90,26 @@ class PubSubRouter():
     def shutdown(self) -> None:
         """Shutdown the router (idempotent)."""
         pass
+
+
+    def _get_change_event_operation(self, event: ChangeEvent) -> Operation | None:
+        """
+        Determine the operation type of a Drasi change event.
+
+        Args:
+            event (ChangeEvent): The Drasi change event.
+        
+        Returns:
+            Operation | None: The operation type (Operation.ADDED, Operation.UPDATED, Operation.DELETED) or None if the event does not match any known operation.
+        """
+        if event.addedResults:
+            return Operation.ADDED
+        elif event.updatedResults:
+            return Operation.UPDATED
+        elif event.deletedResults:
+            return Operation.DELETED
+        else:
+            return None
 
 
     def _to_unpacked_events(self, event: ChangeEvent) -> list[ChangeNotification]:
@@ -114,8 +126,9 @@ class PubSubRouter():
             queryId=event.queryId,
             ts_ms=event.sourceTimeMs,
         )
-        # TODO: events are not guaranteed to arrive in order of sequence number?
-        # Kept constant for now so validation works
+        # TODO: sequence numbers for "unpacked" events are currently not reliable since they are generated reaction-side,
+        # clients should perform their own deduplication based on payload content or similar.
+        # This sequence number is a dummy to enable validation.
         seq = 0
 
         unpacked_events: list[ChangeNotification] = []
@@ -168,28 +181,35 @@ class PubSubRouter():
             message (str): The message to publish.
         """
 
+        # TODO: may want opt-in signing
         self._dapr_client.publish_event(
-            pubsub_name,
-            topic,
-            message,
+            pubsub_name=pubsub_name,
+            topic=topic,
+            data=message,
             data_content_type="application/json",
         )
 
 
-    def _make_payload(self, consumer: PubSubConsumerConfig, event: ChangeNotification) -> PubSubPayload | ChangeNotification:
+    def _make_payload(
+        self,
+        consumer: PubSubConsumerConfig,
+        event: ChangeNotification,
+        operation: Operation,
+    ) -> PubSubPayload | ChangeNotification:
         """
-        Apply a template to a Drasi event to generate a payload for Dapr pub/sub.
+        Apply a template to an unpacked Drasi event to generate a payload for Dapr pub/sub.
 
         Args:
             consumer (PubSubConsumerConfig): The consumer configuration containing the templates.
-            event (ChangeNotification): The Drasi event to which the template is applied.
+            event (ChangeNotification): The unpacked Drasi event to which the template is applied.
+            operation (Operation): The operation being performed.
 
         Returns:
-            PubSubPayload | ChangeNotification: The generated payload, or the original event if no template is applicable.
+            PubSubPayload | ChangeNotification: The generated payload, or the umodified unpacked event if no template is applicable.
         """
         
-        field = _OP_TO_PAYLOAD_SHAPE_FIELD.get(event.op)
-        template = getattr(consumer, field) if field else None
+        # Assumes operation matches the template field name in the consumer config
+        template = getattr(consumer, operation.value) if operation else None
 
         if template is None:
             return event  # No applicable template, return the original event
@@ -207,37 +227,42 @@ class PubSubRouter():
             if query_config is None:
                 return
 
-            # TODO: check if payload shape is given and fill with defaults if needed
-
             # Convert to unpacked form
             unpacked_events = self._to_unpacked_events(event)
             if not unpacked_events:
                 return
 
-            # Get all consumers for the query
-            all_consumers = await self._subscription_registry.get_subscriptions(event.queryId)
+            operation = self._get_change_event_operation(event)
+            if not operation:
+                # Defensive guard - shouldn't happen
+                return
 
-            # Filter for consumers that are interested in this event type (if they have a payload shape field for it)
-            # TODO: don't hardcode event op index
-            op = unpacked_events[0].op
-            # TODO: make this responsibility of subscription registry?
-            # payload shape field may be `None`
-            consumers = [
-                consumer for consumer in all_consumers if getattr(consumer, _OP_TO_PAYLOAD_SHAPE_FIELD.get(op), None) is not None
-            ]
+            # Get all consumers that are interested in this event type (if they have a payload template field)
+            consumers = await self._subscription_registry.get_subscriptions(
+                query_id=event.queryId,
+                operations=operation,
+            )
     
             # Apply template to events based on event type (added, updated, deleted)
             bindings: list[tuple[PubSubConsumerConfig, PubSubPayload | ChangeNotification]] = []
 
             for evt in unpacked_events:
                 for consumer in consumers:
-                    payload = self._make_payload(consumer, evt)
+                    payload = self._make_payload(
+                        consumer=consumer,
+                        event=evt,
+                        operation=operation,
+                    )
                     bindings.append((consumer, payload))
 
             # Publish to Dapr pubsub
-            # TODO: parallelize this
+            # TODO: may want to parallelize or bulk publish if ordering is not important
             for consumer, payload in bindings:
-                self._publish_to_pubsub(self._pubsub_name, consumer.topic, payload.model_dump_json())
+                self._publish_to_pubsub(
+                    pubsub_name=self._pubsub_name,
+                    topic=consumer.topic,
+                    payload=payload.model_dump_json()
+                )
 
         return on_change_event
 

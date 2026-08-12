@@ -35,7 +35,7 @@ class InMemoryStateStore(StateStore[TState]):
         Initialize an InMemoryStateStore instance.
 
         Args:
-            state_model_cls (type[TState]): The state model class used for validation.
+            state_model_cls (type[TState]): The state model class used for validation. Must not take any required arguments.
             state_key_prefix (str | None): Optional prefix for state keys.
             name (str | None): Optional state store name. Resolves to "drasi-pubsub-router-store" if omitted.
         """
