@@ -61,12 +61,9 @@ class QueryConfig(BaseModel):
     Attributes:
         name (str): A human-readable name for the query.
         description (str): A human-readable description of the query.
-        added (PubSubPayload | None): Optional default payload shape for added events.
-            Defaults to Drasi's "unpacked" event format.
-        updated (PubSubPayload | None): Optional default payload shape for updated events.
-            Defaults to Drasi's "unpacked" event format.
-        deleted (PubSubPayload | None): Optional default payload shape for deleted events.
-            Defaults to Drasi's "unpacked" event format.
+        added (PubSubPayload | None): Optional payload shape for added events.
+        updated (PubSubPayload | None): Optional payload shape for updated events.
+        deleted (PubSubPayload | None): Optional payload shape for deleted events.
     """
 
     name: str
@@ -82,10 +79,10 @@ ReactionConfig = dict[str, QueryConfig]
 
 class PubSubConsumerConfig(BaseModel):
     """
-    Subscription configuration for a Drasi consumer.
+    Subscription configuration for a registered agent.
 
     Attributes:
-        id (str): A unique identifier for the consumer.
+        id (str): A unique identifier for the agent.
         topic (str): The name of the topic on which to publish events.
         added (PubSubPayload | None): Optional payload shape for added events. Resolved with the static config if omitted.
         updated (PubSubPayload | None): Optional payload shape for updated events. Resolved with the static config if omitted.

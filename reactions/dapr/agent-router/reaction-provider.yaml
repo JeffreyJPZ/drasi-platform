@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ReactionProvider
-name: DaprPubSubRouter
+name: DaprAgentRouter
 spec:
   services:
     reaction:
-      image: reaction-dapr-pubsub-router
+      image: reaction-dapr-agent-router

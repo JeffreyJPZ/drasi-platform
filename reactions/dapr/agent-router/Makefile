@@ -18,13 +18,13 @@ default: docker-build
 
 # Need build context at reactions root since we are using local install
 docker-build:
-	docker buildx build ../../ -f Dockerfile.$(BUILD_CONFIG) -t $(IMAGE_PREFIX)/reaction-dapr-pubsub-router:$(DOCKER_TAG_VERSION) $(DOCKERX_OPTS)
+	docker buildx build ../../ -f Dockerfile.$(BUILD_CONFIG) -t $(IMAGE_PREFIX)/reaction-dapr-agent-router:$(DOCKER_TAG_VERSION) $(DOCKERX_OPTS)
 
 kind-load:
-	kind load docker-image $(IMAGE_PREFIX)/reaction-dapr-pubsub-router:$(DOCKER_TAG_VERSION) --name $(if $(CLUSTER_NAME),$(CLUSTER_NAME),kind)
+	kind load docker-image $(IMAGE_PREFIX)/reaction-dapr-agent-router:$(DOCKER_TAG_VERSION) --name $(if $(CLUSTER_NAME),$(CLUSTER_NAME),kind)
 
 k3d-load:
-	k3d image import $(IMAGE_PREFIX)/reaction-dapr-pubsub-router:$(DOCKER_TAG_VERSION) -c $(if $(CLUSTER_NAME),$(CLUSTER_NAME),k3s-default)
+	k3d image import $(IMAGE_PREFIX)/reaction-dapr-agent-router:$(DOCKER_TAG_VERSION) -c $(if $(CLUSTER_NAME),$(CLUSTER_NAME),k3s-default)
 
 test:
 	@echo "No tests to run yet"

@@ -27,7 +27,7 @@ from subscription import SubscriptionRegistry
 
 class AppRunner():
     """
-    Lifecycle and dependency management for the Dapr Pub/Sub Router.
+    Lifecycle and dependency management for the Dapr Agent Router.
     """
 
     def __init__(self, state_store_config: StateStoreConfig | None = None) -> None:
@@ -47,14 +47,14 @@ class AppRunner():
             state_store_config=state_store_config or StateStoreConfig(),
         )
 
-        self._app = FastAPI(title="Drasi Pub/Sub Router")
+        self._app = FastAPI(title="Drasi Agent Router")
         self._router = PubSubRouter(
             dapr_client=self._dapr_client,
             app=self._app,
             pubsub_name=self._pubsub_name,
             subscription_registry=self._subscription_registry,
         )
-        self._mcp = FastMCP(name="drasi-pubsub-router-mcp")
+        self._mcp = FastMCP(name="drasi-agent-router-mcp")
         self._mcp_server = MCPServer(
             mcp=self._mcp,
             pubsub_name=self._pubsub_name,

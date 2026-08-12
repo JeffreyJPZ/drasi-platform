@@ -1,7 +1,7 @@
 [project]
-name = "pubsub-router"
+name = "agent-router"
 version = "0.1.0"
-description = "Dapr PubSub Router Reaction"
+description = "Dapr Agent Router Reaction"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [

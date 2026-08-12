@@ -45,7 +45,7 @@ class PubSubRouter():
         app: FastAPI,
         pubsub_name: str,
         subscription_registry: SubscriptionRegistry,
-        name: str = "drasi-pubsub-router",
+        name: str = "drasi-agent-router",
     ) -> None:
         """
         Initialize a PubSubRouter instance.
@@ -55,7 +55,7 @@ class PubSubRouter():
             app (FastAPI): The FastAPI application instance.
             pubsub_name (str): The name of the Dapr pub/sub component.
             subscription_registry (SubscriptionRegistry): The subscription registry.
-            name (str): The name of the router. Defaults to "drasi-pubsub-router".
+            name (str): The name of the router. Defaults to "drasi-agent-router".
         """
         self._name = name
         self._dapr_client = dapr_client

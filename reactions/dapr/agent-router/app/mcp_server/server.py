@@ -35,7 +35,7 @@ class MCPServer:
         pubsub_name: str,
         subscription_registry: SubscriptionRegistry,
         reaction_config: ReactionConfig,
-        name: str = "drasi-pubsub-router-mcp"
+        name: str = "drasi-agent-router-mcp"
     ) -> None:
         """
         Initialize an MCPServer instance.
@@ -44,7 +44,7 @@ class MCPServer:
             mcp (FastMCP): The FastMCP server instance.
             subscription_registry (SubscriptionRegistry): The subscription registry.
             reaction_config (ReactionConfig): The static Drasi reaction configuration.
-            name (str): The name of the server. Defaults to "drasi-pubsub-router-mcp".
+            name (str): The name of the server. Defaults to "drasi-agent-router-mcp".
         """
         self._name = name
         self._tools = DrasiQueryToolSet(

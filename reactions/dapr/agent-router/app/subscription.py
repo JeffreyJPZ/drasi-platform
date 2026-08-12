@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 class SubscriptionRegistry():
     """
-    Subscription management for the Dapr Pub/Sub Router.
+    Subscription management for the Dapr Agent Router.
     """
 
     def __init__(
