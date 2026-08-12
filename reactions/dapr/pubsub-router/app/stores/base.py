@@ -25,6 +25,7 @@ The state model class used for validation. Must not take any required arguments.
 
 
 # TODO: does this need to be parameterized?
+# TODO: this can wrap StateStore from the Drasi Python SDK
 class StateStore(Generic[TState]):
     """
     Base class for state store implementations.

@@ -24,7 +24,8 @@ def normalize_operations(operations: str | Operation | list[str | Operation] | N
     Normalize operation input to a deduplicated, ordered list of operation fields.
 
     Args:
-        operations (str | Operation | list[str | Operation] | None): The operations to normalize. None means all operations.
+        operations (str | Operation | list[str | Operation] | None): The operations to normalize.
+            If omitted or empty, all operations are included.
     
     Returns:
         list[Operation]: A deduplicated, ordered list of normalized operations.
@@ -32,6 +33,7 @@ def normalize_operations(operations: str | Operation | list[str | Operation] | N
     Raises:
         ValueError: If any of the operations are not supported or if the resulting list is empty.
     """
+    # TODO: should empty or None really be considered as "all operations"?
     if not operations:
         return list(_OPERATION_FIELDS)
 

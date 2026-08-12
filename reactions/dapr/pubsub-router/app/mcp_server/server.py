@@ -16,7 +16,6 @@
 
 import logging
 
-from dapr.clients import DaprClient
 from fastmcp import FastMCP
 
 from mcp_server.tools import DrasiQueryToolSet

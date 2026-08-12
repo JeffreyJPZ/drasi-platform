@@ -94,7 +94,7 @@ class DrasiQueryToolSet:
             agent_id (str): The ID of the agent making the subscription.
             topic (str): The name of the topic on which the agent will receive messages.
             operations (str | list[str] | None): The operations to subscribe to ("added", "updated", "deleted").
-                If omitted, all operations are subscribed to.
+                If omitted or empty, all operations are subscribed to.
         """
         normalized_operations = normalize_operations(operations)
         logger.info(
@@ -182,6 +182,7 @@ class DrasiQueryToolSet:
         return [query_id for query_id in self._reaction_config.keys()]
 
 
+    # TODO: do we need this?
     async def list_subscriptions(self, agent_id: str) -> list[PubSubConsumerConfig]:
         """
         List all subscriptions for an agent.

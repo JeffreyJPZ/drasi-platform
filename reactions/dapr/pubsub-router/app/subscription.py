@@ -77,7 +77,8 @@ class SubscriptionRegistry():
 
         Args:
             query_id (str): The query ID for which the subscription is being retrieved.
-            operations (str | list[str] | None): The operations to filter by. If omitted, all operations are included.
+            operations (str | list[str] | None): The operations to filter by.
+                If omitted or empty, all operations are included.
         """
         normalized_operations = normalize_operations(operations)
         state = await self._state_store.get_state(query_id)
@@ -94,7 +95,7 @@ class SubscriptionRegistry():
     async def upsert_subscription(
         self,
         query_id: str,
-        consumer_id: str,
+        consumer_id: str,  # TODO: use a unified name instead of having agent ID and consumer ID
         config: PubSubConsumerConfig,
     ) -> None:
         """
