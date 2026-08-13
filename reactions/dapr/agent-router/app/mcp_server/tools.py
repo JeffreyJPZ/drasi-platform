@@ -55,7 +55,6 @@ class DrasiQueryToolSet:
         mcp.tool(self.subscribe)
         mcp.tool(self.unsubscribe)
         mcp.tool(self.list_queries)
-        mcp.tool(self.list_subscriptions)
 
         logger.info("DrasiQueryToolSet initialized and tools registered with MCP")
 
@@ -180,19 +179,3 @@ class DrasiQueryToolSet:
         logger.info("Listing all queries")
         # TODO: does this need to be from query API?
         return [query_id for query_id in self._reaction_config.keys()]
-
-
-    # TODO: do we need this?
-    async def list_subscriptions(self, agent_id: str) -> list[PubSubConsumerConfig]:
-        """
-        List all subscriptions for an agent.
-
-        Args:
-            agent_id (str): The ID of the agent for which to list subscriptions.
-        """
-        logger.info("Listing all subscriptions")
-
-        subscription_tasks = [self._subscription_registry.get_subscription(query_id, agent_id) for query_id in self._reaction_config.keys()]
-        results = await asyncio.gather(*subscription_tasks)
-
-        return [result for result in results if result is not None]
