@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 class DaprStateStore(StateStore[TState]):
     """
-    Dapr key-value state store for persistent subscription state.
+    Dapr key-value state store for persisting and recovering subscription state.
     """
 
     def __init__(

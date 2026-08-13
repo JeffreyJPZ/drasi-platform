@@ -22,7 +22,7 @@ from stores.base import StateStore, TState
 
 class InMemoryStateStore(StateStore[TState]):
     """
-    Simple in-memory key-value state store for testing and development purposes.
+    In-memory key-value state store for all subscription reads and writes.
     """
 
     def __init__(
