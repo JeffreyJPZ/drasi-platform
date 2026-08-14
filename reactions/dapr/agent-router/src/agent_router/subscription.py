@@ -57,6 +57,22 @@ class SubscriptionRegistry():
         self._lock = asyncio.Lock()
 
 
+    def new_subscription_id(agent_id: str) -> str:
+        """
+        Generate a subscription ID from an agent ID. Currently a no-op that echoes the agent ID.
+
+        Args:
+            agent_id (str): Agent ID for which to generate a subscription ID.
+
+        Returns:
+            str: The generated subscription ID.
+        """
+        # TODO: Subscription ID is currently the client-provided agent ID (which can be anything).
+        # Should it be cryptographic (enforced) and composed with a principal (e.g. API key ID, OAuth sub, SPIFFE ID) in authenticated mode
+        # or source (e.g. registered workflow ID) in unauthenticated mode?
+        return agent_id
+
+
     async def get_subscription(self, query_id: str, subscription_id: str) -> QuerySubscription | None:
         """
         Get a subscription.
@@ -105,7 +121,7 @@ class SubscriptionRegistry():
         event_types: list[EventType],
     ) -> None:
         """
-        Create or update (replace) a subscription.
+        Create or update a subscription (idempotent).
 
         Args:
             query_id (str): The query ID targeted by the subscription.
@@ -125,6 +141,7 @@ class SubscriptionRegistry():
             await self._save_subscription_state(query_id, state)
 
 
+    # TODO: is this needed?
     async def update_subscription(
         self,
         query_id: str,
@@ -161,7 +178,7 @@ class SubscriptionRegistry():
 
     async def delete_subscription(self, query_id: str, subscription_id: str) -> None:
         """
-        Delete a subscription if it exists.
+        Delete a subscription (idempotent).
 
         Args:
             query_id (str): The query ID targeted by the subscription.

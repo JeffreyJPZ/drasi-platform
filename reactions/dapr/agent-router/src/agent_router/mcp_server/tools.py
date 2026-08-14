@@ -18,19 +18,27 @@ import logging
 from typing import Annotated
 
 from fastmcp import FastMCP
+from fastmcp.exceptions import ToolError
 from pydantic import Field
 
 from agent_router.subscription import SubscriptionRegistry
-from agent_router.utils.types import EventType, QueryConfig
+from agent_router.utils.types import (
+    EventType,
+    ListQueriesResult,
+    QueryConfig,
+    QueryResult,
+    SubscribeResult,
+    UnsubscribeResult,
+)
 
 logger = logging.getLogger(__name__)
 
 
-# TODO: we may want a tool executor instead but since our toolset is limited it may not be necessary
-# TODO: fix docstrings and return structured responses
-class DrasiQueryToolSet:
+# TODO: fix docstrings
+# TODO: better error handling
+class AgentRouterToolset:
     """
-    A toolset for managing Drasi queries.
+    Toolset for the Drasi Agent Router MCP server.
     """
 
     def __init__(
@@ -40,12 +48,12 @@ class DrasiQueryToolSet:
         query_configs: dict[str, QueryConfig],
     ) -> None:
         """
-        Initialize a DrasiQueryToolSet instance.
+        Initialize an AgentRouterToolset instance.
 
         Args:
-            mcp (FastMCP): The FastMCP server instance.
-            subscription_registry (SubscriptionRegistry): The subscription registry.
-            query_configs (dict[str, QueryConfig]): The static configuration for all queries.
+            mcp (FastMCP): Injected FastMCP server instance.
+            subscription_registry (SubscriptionRegistry): Injected subscription registry.
+            query_configs (dict[str, QueryConfig]): Static configuration for all queries.
         """
         self._subscription_registry = subscription_registry
         self._query_configs = query_configs
@@ -68,10 +76,10 @@ class DrasiQueryToolSet:
         Subscribe an agent to a Drasi query on a given pub/sub topic.
 
         Args:
-            query_id (str): The ID of the query to subscribe to.
-            agent_id (str): The ID of the agent making the subscription.
-            topic (str): The name of the topic on which the agent will receive messages.
-            event_types (list[EventType]): The list of event types to which the agent is subscribed.
+            query_id (str): Unique identifier of the query to subscribe to.
+            agent_id (str): Unique identifier of the agent making the subscription.
+            topic (str): Name of the topic on which the agent will receive messages.
+            event_types (list[EventType]): List of event types to which the agent is subscribed.
                 Must contain at least one event type.
         """
         # Deduplicate event types
@@ -85,18 +93,29 @@ class DrasiQueryToolSet:
         )
 
         if self._query_configs.get(query_id) is None:
-            raise ValueError(f"Unknown query_id '{query_id}'")
+            raise ToolError(f"Unknown query_id '{query_id}'")
+
+        # TODO: verify that the agent is allowed to subscribe to the query
+        subscription_id = self._subscription_registry.new_subscription_id(agent_id)
 
         await self._subscription_registry.upsert_subscription(
             query_id=query_id,
-            subscription_id=agent_id,
+            subscription_id=subscription_id,
             topic=topic,
             event_types=event_types,
         )
     
-        return (
+        logger.info(
             f"Agent '{agent_id}' successfully subscribed to query '{query_id}' "
-            f"on topic '{topic}', event_types={event_types!r})"
+            f"on topic '{topic}', subscription_id='{subscription_id}', event_types={event_types!r}"
+        )
+
+        return SubscribeResult(
+            agent_id=agent_id,
+            query_id=query_id,
+            topic=topic,
+            subscription_id=subscription_id,
+            event_types=event_types,
         )
 
 
@@ -104,66 +123,68 @@ class DrasiQueryToolSet:
         self,
         query_id: str,
         agent_id: str,
-        event_types: Annotated[list[EventType], Field(min_length=1)],
-    ) -> str:
+        subscription_id: str,
+    ) -> UnsubscribeResult:
         """
         Unsubscribe an agent from a Drasi query.
 
         Args:
-            query_id (str): The ID of the query to unsubscribe from.
-            agent_id (str): The ID of the agent to unsubscribe.
-            event_types (list[EventType]): The list of event types to unsubscribe from.
-                Must contain at least one event type.
+            query_id (str): Unique identifier of the query to unsubscribe from.
+            agent_id (str): Unique identifier of the agent to unsubscribe.
+            subscription_id (str): Unique identifier of the subscription to remove.
         """
-        # Deduplicate event types
-        event_types = list(dict.fromkeys(event_types))
-
         logger.info(
-            f"Unsubscribing agent '{agent_id}' from query '{query_id}' for event_types={event_types!r}",
+            f"Unsubscribing agent '{agent_id}' from query '{query_id}', subscription_id='{subscription_id}'",
         )
 
         if self._query_configs.get(query_id) is None:
-            raise ValueError(f"Unknown query_id '{query_id}'")
+            raise ToolError(f"Unknown query_id '{query_id}'")
 
-        current_sub = await self._subscription_registry.get_subscription(
+        # TODO: verify that the agent actually owns the subscription
+        subscription = await self._subscription_registry.get_subscription(
             query_id=query_id,
-            subscription_id=agent_id,
+            subscription_id=subscription_id,
         )
 
-        if current_sub is None:
+        if subscription is None:
             return (
-                f"Agent '{agent_id}' successfully unsubscribed from query '{query_id}' "
-                f"for event_types={event_types!r} (no existing subscription found)"
+                f"Agent '{agent_id}' successfully unsubscribed from query '{query_id}', "
+                f"subscription_id='{subscription_id}'(no existing subscription found)"
             )
 
-        # Diff event types to determine the new set of event types for the subscription
-        deleted_types = set(event_types)
-        remaining_types = [event_type for event_type in current_sub.event_types if event_type not in deleted_types]
+        await self._subscription_registry.delete_subscription(
+            query_id=query_id,
+            subscription_id=subscription_id,
+        )
 
-        # If no event types remain, remove the subscription to preserve the event type invariant
-        if not remaining_types:
-            await self._subscription_registry.delete_subscription(
-                query_id=query_id,
-                subscription_id=agent_id,
-            )
-        else:
-            await self._subscription_registry.update_subscription(
-                query_id=query_id,
-                subscription_id=agent_id,
-                topic=current_sub.topic,
-                event_types=remaining_types,
-            )
+        logger.info(
+            f"Agent '{agent_id}' successfully unsubscribed from query '{query_id}', "
+            f"subscription_id='{subscription_id}'"
+        )
 
-        return (
-            f"Agent '{agent_id}' successfully unsubscribed from query '{query_id}' "
-            f"for event_types={event_types!r}"
+        return UnsubscribeResult(
+            agent_id=agent_id,
+            query_id=query_id,
+            subscription_id=subscription_id,
         )
 
 
-    async def list_queries(self) -> list[QueryConfig]:
+    async def list_queries(self) -> ListQueriesResult:
         """
         List all Drasi queries.
+
+        Returns:
+            list[QueryConfig]: A list of all query configurations.
         """
         logger.info("Listing all queries")
 
-        return [query_id for query_id in self._query_configs.keys()]
+        return ListQueriesResult(
+            queries=[
+                QueryResult(
+                    query_id=query_id,
+                    title=self._query_configs.get(query_id, {}).title,
+                    description=self._query_configs.get(query_id, {}).description,
+                )
+                for query_id in self._query_configs.keys()
+            ]
+        )

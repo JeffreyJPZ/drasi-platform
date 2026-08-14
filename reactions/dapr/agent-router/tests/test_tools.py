@@ -17,7 +17,7 @@
 import asyncio
 from unittest.mock import Mock
 
-from agent_router.mcp_server.tools import DrasiQueryToolSet
+from agent_router.mcp_server.tools import AgentRouterToolset
 from agent_router.subscription import SubscriptionRegistry
 from agent_router.utils.types import EventType, QueryConfig, StateConfig
 
@@ -31,7 +31,7 @@ def _run(coro):
     return asyncio.run(coro)
 
 
-def _make_toolset() -> DrasiQueryToolSet:
+def _make_toolset() -> AgentRouterToolset:
     reaction_config = {
         "query-1": QueryConfig(
             title="Query 1",
@@ -42,7 +42,7 @@ def _make_toolset() -> DrasiQueryToolSet:
         dapr_client=Mock(),
         state_config=StateConfig(store_name="test"),
     )
-    return DrasiQueryToolSet(
+    return AgentRouterToolset(
         mcp=DummyMCP(),
         subscription_registry=registry,
         query_configs=reaction_config,

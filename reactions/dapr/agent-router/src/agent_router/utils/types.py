@@ -50,8 +50,8 @@ class QueryConfig(BaseModel):
     Static query configuration for a Drasi query.
 
     Attributes:
-        title (str): A human-readable name for the query.
-        description (str): A human-readable description of the query.
+        title (str): Human-readable name for the query.
+        description (str): Human-readable description of the query.
     """
 
     title: str
@@ -68,7 +68,7 @@ class PubSubConfig(BaseModel):
     Configuration for pub/sub.
 
     Attributes:
-        pubsub_name (str): The name of the Dapr pub/sub component to use.
+        pubsub_name (str | None): Name of the Dapr pub/sub component to use.
     """
 
     pubsub_name: str | None = None
@@ -79,8 +79,8 @@ class StateConfig(BaseModel):
     Configuration for subscription state.
 
     Attributes:
-        store_name (str): The name of the Dapr state store component to use for persistence.
-        state_key_prefix (str): Optional prefix to use for state keys to avoid collisions.
+        store_name (str | None): Name of the Dapr state store component to use for persistence.
+        state_key_prefix (str | None): Optional prefix to use for state keys to avoid collisions.
     """
 
     store_name: str | None = None
@@ -97,10 +97,10 @@ class QuerySubscription(BaseModel):
     Subscription configuration.
 
     Attributes:
-        id (str): A unique identifier for the subscription (this may not be the same as the agent's).
-        query_id (str): The unique identifier for the query targeted by the subscription.
-        topic (str): The name of the topic on which to publish events.
-        event_types (list[EventType]): The list of event types that the subscription is interested in.
+        id (str): Unique identifier for the subscription (this may not be the same as the agent's).
+        query_id (str): Unique identifier for the query targeted by the subscription.
+        topic (str): Name of the topic on which to publish events.
+        event_types (list[EventType]): List of event types that the subscription is interested in.
             Must contain at least one event type.
     """
 
@@ -126,11 +126,17 @@ class SubscribeResult(BaseModel):
     Result of a `subscribe` tool call.
 
     Attributes:
-        query_id (str): The unique identifier for the query.
-        subscription_id (str): The unique identifier for the subscription.
+        agent_id (str): Unique identifier for the agent making the subscription.
+        query_id (str): Unique identifier for the Drasi query targeted by the subscription.
+        topic (str): Name of the topic on which the agent will receive messages.
+        subscription_id (str): Unique identifier for the subscription.
+        event_types (list[EventType]): List of event types that the subscription is interested in.
     """
+    agent_id: str
     query_id: str
+    topic: str
     subscription_id: str
+    event_types: Annotated[list[EventType], Field(min_length=1)]
 
 
 # TODO: what should the result look like
@@ -139,11 +145,27 @@ class UnsubscribeResult(BaseModel):
     Result of an `unsubscribe` tool call.
 
     Attributes:
-        query_id (str): The unique identifier for the query.
-        subscription_id (str): The unique identifier for the subscription.
+        agent_id (str): Unique identifier for the agent unsubscribing.
+        query_id (str): Unique identifier for the Drasi query targeted by the subscription.
+        subscription_id (str): Unique identifier for the subscription.
     """
+    agent_id: str
     query_id: str
     subscription_id: str
+
+
+class QueryResult(BaseModel):
+    """
+    Individual query result in a `list_queries` tool call.
+
+    Attributes:
+        query_id (str): Unique identifier for the query.
+        title (str): Human-readable name for the query.
+        description (str): Human-readable description of the query.
+    """
+    query_id: str
+    title: str
+    description: str
 
 
 class ListQueriesResult(BaseModel):
@@ -151,10 +173,6 @@ class ListQueriesResult(BaseModel):
     Result of a `list_queries` tool call.
 
     Attributes:
-        query_id (str): The unique identifier for the query.
-        title (str): A human-readable name for the query.
-        description (str): A human-readable description of the query.
+        queries (list[QueryResult]): List of query results.
     """
-    query_id: str
-    title: str
-    description: str
+    queries: list[QueryResult]

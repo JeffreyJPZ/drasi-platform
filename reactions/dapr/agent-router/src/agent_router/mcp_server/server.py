@@ -18,7 +18,7 @@ import logging
 
 from fastmcp import FastMCP
 
-from agent_router.mcp_server.tools import DrasiQueryToolSet
+from agent_router.mcp_server.tools import AgentRouterToolset
 from agent_router.subscription import SubscriptionRegistry
 from agent_router.utils.types import QueryConfig
 
@@ -46,7 +46,7 @@ class MCPServer:
             name (str): Name for the server (used for logging). Defaults to "drasi-agent-router-mcp".
         """
         self._name = name
-        self._tools = DrasiQueryToolSet(
+        self._tools = AgentRouterToolset(
             mcp=mcp,
             subscription_registry=subscription_registry,
             query_configs=query_configs,
