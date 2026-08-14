@@ -22,7 +22,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --package agent-router
 
 COPY dapr/agent-router/uv.lock dapr/agent-router/pyproject.toml .
-COPY dapr/agent-router/app/ .
+COPY dapr/agent-router/src ./src
 
 COPY sdk/python /app/sdk/python
 
@@ -39,8 +39,7 @@ FROM python:3.13-slim-bookworm
 WORKDIR /app
 
 COPY --from=build /app/dapr/agent-router/.venv .venv
-COPY --from=build /app/dapr/agent-router .
 
 ENV PATH="/app/.venv/bin:$PATH"
 
-ENTRYPOINT ["python", "main.py"]
+ENTRYPOINT ["python", "-m", "agent_router.main"]

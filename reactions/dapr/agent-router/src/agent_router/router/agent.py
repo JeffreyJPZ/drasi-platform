@@ -30,36 +30,36 @@ from drasi.reaction.models.ControlEvent import ControlEvent
 from drasi.reaction.sdk import AsyncChangeEventFunc, AsyncControlEventFunc, DrasiReaction
 from drasi.reaction.utils import yaml_query_configs
 
-from subscription import SubscriptionRegistry
-from utils.types import Operation, PubSubPayload, PubSubConsumerConfig, ReactionConfig
+from agent_router.subscription import SubscriptionRegistry
+from agent_router.utils.types import EventType, PubSubConfig, QuerySubscription, QueryConfig
 
 
-class PubSubRouter():
+class AgentRouter():
     """
-    Dispatches Drasi events to Dapr pub/sub topics.
+    Dispatches Drasi events to subscribed agents via Dapr pub/sub.
     """
 
     def __init__(
         self,
         dapr_client: DaprClient,
         app: FastAPI,
-        pubsub_name: str,
+        pubsub_config: PubSubConfig,
         subscription_registry: SubscriptionRegistry,
         name: str = "drasi-agent-router",
     ) -> None:
         """
-        Initialize a PubSubRouter instance.
-        
+        Initialize an AgentRouter instance.
+
         Args:
             dapr_client (DaprClient): Injected Dapr client.
             app (FastAPI): The FastAPI application instance.
-            pubsub_name (str): The name of the Dapr pub/sub component.
+            pubsub_config (PubSubConfig): The Dapr pub/sub configuration.
             subscription_registry (SubscriptionRegistry): The subscription registry.
-            name (str): The name of the router. Defaults to "drasi-agent-router".
+            name (str): The name for the router (used for logging). Defaults to "drasi-agent-router".
         """
         self._name = name
         self._dapr_client = dapr_client
-        self._pubsub_name = pubsub_name
+        self._pubsub_config = pubsub_config
         self._subscription_registry = subscription_registry
         self._reaction = DrasiReaction(
             on_change_event=self._make_on_change_event(),
@@ -68,18 +68,18 @@ class PubSubRouter():
             app=app,
             host="0.0.0.0",
         )
-        self._query_config_adapter = TypeAdapter(ReactionConfig)
+        self._query_config_adapter = TypeAdapter(dict[str, QueryConfig])
 
 
     @property
-    def reaction_config(self) -> ReactionConfig:
+    def query_configs(self) -> dict[str, QueryConfig]:
         """
-        Get the current supported queries lazily.
+        Return a copy of the static query configurations.
 
         Returns:
-            dict[str, QueryConfig]: A dictionary mapping query IDs to their corresponding information.
+            dict[str, QueryConfig]: A map of query IDs to their corresponding configuration.
         """
-        return self._reaction.query_configs
+        return self._query_config_adapter.validate_python(self._reaction.query_configs)
 
 
     def start(self) -> None:
@@ -92,35 +92,31 @@ class PubSubRouter():
         pass
 
 
-    def _get_change_event_operation(self, event: ChangeEvent) -> Operation | None:
+    def _get_event_type(self, event: ChangeEvent) -> EventType | None:
         """
-        Determine the operation type of a Drasi change event.
+        Return the event type of a Drasi change event.
 
         Args:
             event (ChangeEvent): The Drasi change event.
         
         Returns:
-            Operation | None: The operation type (Operation.ADDED, Operation.UPDATED, Operation.DELETED) or None if the event does not match any known operation.
+            EventType | None: The event type (EventType.ADDED, EventType.UPDATED, EventType.DELETED)
+                or None if the event does not match any known event type.
         """
         if event.addedResults:
-            return Operation.ADDED
+            return EventType.ADDED
         elif event.updatedResults:
-            return Operation.UPDATED
+            return EventType.UPDATED
         elif event.deletedResults:
-            return Operation.DELETED
+            return EventType.DELETED
         else:
             return None
 
 
     def _to_unpacked_events(self, event: ChangeEvent) -> list[ChangeNotification]:
         """
-        Converts a single "packed" Drasi event (containing batched changes) into a flat list
-        of "unpacked" events, one per changed item.
-
-        Assumptions:
-        - addedResults items are plain "after" records
-        - deletedResults items are plain "before" records
-        - updatedResults items are dicts/objects with "before" and "after" keys
+        Converts a single Drasi change event (containing batched records) into a flat list
+        of unpacked events, one per record.
         """
         source = ChangeSource(
             queryId=event.queryId,
@@ -133,8 +129,8 @@ class PubSubRouter():
 
         unpacked_events: list[ChangeNotification] = []
 
-        for item in event.addedResults:
-            after = item.model_dump()
+        for record in event.addedResults:
+            after = record.model_dump()
             unpacked_events.append(
                 ChangeNotification(
                     op=Op.i,
@@ -144,10 +140,10 @@ class PubSubRouter():
                 )
             )
 
-        for item in event.updatedResults:
+        for record in event.updatedResults:
             # Assume item has "before" and "after" attributes
-            before = item.before.model_dump() if item.before is not None else None
-            after = item.after.model_dump() if item.after is not None else None
+            before = record.before.model_dump() if record.before is not None else None
+            after = record.after.model_dump() if record.after is not None else None
             unpacked_events.append(
                 ChangeNotification(
                     op=Op.u,
@@ -157,8 +153,8 @@ class PubSubRouter():
                 )
             )
 
-        for item in event.deletedResults:
-            before = item.model_dump()
+        for record in event.deletedResults:
+            before = record.model_dump()
             unpacked_events.append(
                 ChangeNotification(
                     op=Op.d,
@@ -171,55 +167,44 @@ class PubSubRouter():
         return unpacked_events
 
  
-    def _publish_to_pubsub(self, pubsub_name: str, topic: str, message: str) -> None:
+    def _publish_event(self, pubsub_name: str, topic: str, event: str) -> None:
         """
-        Publish a message to a Dapr pub/sub topic.
+        Publish an event to a Dapr pub/sub topic.
 
         Args:
-            pubsub_name (str): The name of the Dapr pubsub component.
-            topic (str): The name of the topic on which to publish the message.
-            message (str): The message to publish.
+            pubsub_name (str): The name of the Dapr pub/sub component.
+            topic (str): The name of the topic on which to publish the event.
+            event (str): The serialized event to publish.
         """
 
         # TODO: may want opt-in signing
+        # TODO: add more metadata
         self._dapr_client.publish_event(
             pubsub_name=pubsub_name,
             topic=topic,
-            data=message,
+            data=event,
             data_content_type="application/json",
         )
 
 
-    def _make_payload(
+    def _make_binding(
         self,
-        consumer: PubSubConsumerConfig,
+        subscription: QuerySubscription,
         event: ChangeNotification,
-        operation: Operation,
-    ) -> PubSubPayload | ChangeNotification:
+    ) -> tuple[QuerySubscription, str]:
         """
-        Apply a template to an unpacked Drasi event to generate a payload for Dapr pub/sub.
+        Pair a subscription with a serialized Drasi unpacked event.
 
         Args:
-            consumer (PubSubConsumerConfig): The consumer configuration containing the templates.
-            event (ChangeNotification): The unpacked Drasi event to which the template is applied.
-            operation (Operation): The operation being performed.
+            subscription (QuerySubscription): The subscription configuration.
+            event (ChangeNotification): The unpacked Drasi event.
 
         Returns:
-            PubSubPayload | ChangeNotification: The generated payload, or the umodified unpacked event if no template is applicable.
+            tuple[QuerySubscription, str]: A tuple containing the subscription and the serialized event.
         """
-        
-        # Assumes operation matches the template field name in the consumer config
-        template = getattr(consumer, operation.value) if operation else None
 
-        if template is None:
-            return event  # No applicable template, return the original event
-
-        context = event.model_dump()
-        # TODO: make this generalizable
-        # Assume template always has a "task" field for now
-        task = render(template.task, context)
-
-        return PubSubPayload(task=task)
+        serialized = event.model_dump_json()
+        return (subscription, serialized)
 
 
     def _make_on_change_event(self) -> AsyncChangeEventFunc:
@@ -227,41 +212,34 @@ class PubSubRouter():
             if query_config is None:
                 return
 
-            # Convert to unpacked form
+            # Debatch event to unpacked format
             unpacked_events = self._to_unpacked_events(event)
             if not unpacked_events:
                 return
 
-            operation = self._get_change_event_operation(event)
-            if not operation:
-                # Defensive guard - shouldn't happen
+            event_type = self._get_event_type(event)
+            if not event_type:
+                # Defensive guard — shouldn't happen
                 return
 
-            # Get all consumers that are interested in this event type (if they have a payload template field)
-            consumers = await self._subscription_registry.get_subscriptions(
+            # Get all agents that are interested in this event type
+            subscriptions = await self._subscription_registry.get_subscriptions(
                 query_id=event.queryId,
-                operations=operation,
+                event_types=[event_type],
             )
     
-            # Apply template to events based on event type (added, updated, deleted)
-            bindings: list[tuple[PubSubConsumerConfig, PubSubPayload | ChangeNotification]] = []
-
+            bindings: list[tuple[QuerySubscription, str]] = []
             for evt in unpacked_events:
-                for consumer in consumers:
-                    payload = self._make_payload(
-                        consumer=consumer,
-                        event=evt,
-                        operation=operation,
-                    )
-                    bindings.append((consumer, payload))
+                for sub in subscriptions:
+                    bindings.append(self._make_binding(sub, evt))
 
-            # Publish to Dapr pubsub
-            # TODO: may want to parallelize or bulk publish if ordering is not important
-            for consumer, payload in bindings:
-                self._publish_to_pubsub(
-                    pubsub_name=self._pubsub_name,
-                    topic=consumer.topic,
-                    payload=payload.model_dump_json()
+            # Publish to Dapr pub/sub
+            # TODO: may want to bulk publish
+            for sub, evt in bindings:
+                self._publish_event(
+                    pubsub_name=self._pubsub_config.pubsub_name,
+                    topic=sub.topic,
+                    event=evt,
                 )
 
         return on_change_event

@@ -14,6 +14,6 @@
 # limitations under the License.
 #
 
-from .pubsub import PubSubRouter
+from .agent import AgentRouter
 
-__all__ = ["PubSubRouter"]
+__all__ = ["AgentRouter"]

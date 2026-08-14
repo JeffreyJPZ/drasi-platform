@@ -25,7 +25,6 @@ The state model class used for validation. Must not take any required arguments.
 
 
 # TODO: does this need to be parameterized?
-# TODO: this can wrap StateStore from the Drasi Python SDK
 class StateStore(Generic[TState]):
     """
     Base class for state store implementations.
@@ -34,9 +33,10 @@ class StateStore(Generic[TState]):
 
     def __init__(
         self,
+        *,
         state_model_cls: type[TState],
         state_key_prefix: str | None = None,
-        name: str | None = None,
+        name: str = "drasi-agent-router-store",
     ) -> None:
         """
         Initialize a StateStore instance.
@@ -44,20 +44,19 @@ class StateStore(Generic[TState]):
         Args:
             state_model_cls (type[TState]): The state model class used for validation. Must not take any required arguments.
             state_key_prefix (str | None): Optional prefix for state keys.
-            name (str | None): Optional name of the state store. Defaults to "drasi-pubsub-router-store" if omitted.
+            name (str): The name for the store (used for logging). Defaults to "drasi-agent-router-store".
         """
         self._state_model_cls = state_model_cls
         self._state_key_prefix = state_key_prefix
-        # TODO: how should naming work
-        self._name = name or "drasi-pubsub-router-store"
+        self._name = name
         # TODO: assumes model takes in no args
         # TODO: should this be configurable
         self._default_state_model_factory = lambda: state_model_cls()
-        
+
 
     @property
-    def store_name(self) -> str:
-        """The name of the state store."""
+    def name(self) -> str:
+        """Get the name of the state store."""
         return self._name
 
 
@@ -67,6 +66,19 @@ class StateStore(Generic[TState]):
 
 
     # TODO: should these be sync? how to call underlying sync and async methods via a sync interface?
+    async def has_key(self, key: str) -> bool:
+        """
+        Check whether a logical key exists in the store.
+
+        Args:
+            key (str): The key to check for existence.
+
+        Returns:
+            bool: True if the key exists, False otherwise.
+        """
+        raise NotImplementedError("has_key method must be implemented by subclasses.")
+
+
     async def get_state(self, key: str) -> TState:
         """
         Retrieve the state associated with the given key.

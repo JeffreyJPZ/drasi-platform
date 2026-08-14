@@ -14,22 +14,24 @@
 # limitations under the License.
 #
 
-import asyncio
-from typing import Any
+from cachetools import LRUCache
 
-from stores.base import StateStore, TState
+from agent_router.stores.base import StateStore, TState
 
 
+# TODO: look into TTL cache for subscription refresh
 class InMemoryStateStore(StateStore[TState]):
     """
     In-memory key-value state store for all subscription reads and writes.
+    Note: Access is not synchronized — callers must synchronize access with their own locks.
     """
 
     def __init__(
         self,
+        *,
         state_model_cls: type[TState],
         state_key_prefix: str | None = None,
-        name: str | None = None,
+        name: str = "drasi-agent-router-memory-store",
     ) -> None:
         """
         Initialize an InMemoryStateStore instance.
@@ -37,12 +39,25 @@ class InMemoryStateStore(StateStore[TState]):
         Args:
             state_model_cls (type[TState]): The state model class used for validation. Must not take any required arguments.
             state_key_prefix (str | None): Optional prefix for state keys.
-            name (str | None): Optional state store name. Resolves to "drasi-pubsub-router-store" if omitted.
+            name (str): The name for the store (used for logging). Defaults to "drasi-agent-router-memory-store".
         """
         super().__init__(state_model_cls=state_model_cls, state_key_prefix=state_key_prefix, name=name)
 
-        self._lock = asyncio.Lock()
-        self._store: dict[str, Any] = {}
+        self._store: LRUCache[str, str] = LRUCache(maxsize=1024)  # TODO: make this configurable
+
+
+    async def has_key(self, key: str) -> bool:
+        """
+        Check whether the given key exists in the store.
+
+        Args:
+            key (str): The key to check.
+
+        Returns:
+            bool: True if the key exists, False otherwise.
+        """
+        state_key = self._normalize_key(key)
+        return state_key in self._store
 
 
     async def get_state(self, key: str) -> TState:
@@ -57,11 +72,12 @@ class InMemoryStateStore(StateStore[TState]):
         """
         state_key = self._normalize_key(key)
 
-        async with self._lock:
-            state = self._store.get(state_key, None)
-            if state is None:
-                return self._default_state_model_factory()
-            return self._state_model_cls.model_validate(state) 
+        state = self._store.get(state_key, None)
+
+        if state is None:
+            return self._default_state_model_factory()
+
+        return self._state_model_cls.model_validate_json(state) 
 
 
     async def save_state(self, key: str, value: TState) -> None:
@@ -74,9 +90,8 @@ class InMemoryStateStore(StateStore[TState]):
         """
         state_key = self._normalize_key(key)
 
-        async with self._lock:
-            value = value.model_dump(mode="json")
-            self._store[state_key] = value
+        value = value.model_dump_json()
+        self._store[state_key] = value
 
 
     async def purge_state(self, key: str) -> None:
@@ -88,6 +103,5 @@ class InMemoryStateStore(StateStore[TState]):
         """
         state_key = self._normalize_key(key)
 
-        async with self._lock:
-            if state_key in self._store:
-                self._store.pop(state_key, None)
+        if state_key in self._store:
+            self._store.pop(state_key, None)

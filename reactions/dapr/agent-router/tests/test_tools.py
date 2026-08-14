@@ -17,9 +17,9 @@
 import asyncio
 from unittest.mock import Mock
 
-from app.mcp_server.tools import DrasiQueryToolSet
-from app.subscription import SubscriptionRegistry
-from app.utils.types import PubSubConsumerConfig, PubSubPayload, QueryConfig
+from agent_router.mcp_server.tools import DrasiQueryToolSet
+from agent_router.subscription import SubscriptionRegistry
+from agent_router.utils.types import EventType, QueryConfig, StateConfig
 
 
 class DummyMCP:
@@ -34,75 +34,69 @@ def _run(coro):
 def _make_toolset() -> DrasiQueryToolSet:
     reaction_config = {
         "query-1": QueryConfig(
-            name="Query 1",
+            title="Query 1",
             description="A test query",
-            added=PubSubPayload(task="added"),
-            updated=PubSubPayload(task="updated"),
-            deleted=PubSubPayload(task="deleted"),
         )
     }
-    registry = SubscriptionRegistry(dapr_client=Mock(), use_state_store=False)
-    return DrasiQueryToolSet(
+    registry = SubscriptionRegistry(
         dapr_client=Mock(),
+        state_config=StateConfig(store_name="test"),
+    )
+    return DrasiQueryToolSet(
         mcp=DummyMCP(),
-        pubsub_name="pubsub",
         subscription_registry=registry,
-        reaction_config=reaction_config,
+        query_configs=reaction_config,
     )
 
 
 def test_subscribe_normalizes_operations_and_upserts_existing_subscription() -> None:
     toolset = _make_toolset()
 
-    _run(toolset.subscribe("query-1", "agent-1", "topic-a", operations="added"))
+    _run(toolset.subscribe("query-1", "agent-1", "topic-a", event_types=[EventType.ADDED]))
     _run(
         toolset.subscribe(
             "query-1",
             "agent-1",
             "topic-b",
-            operations=["updated", "added", "updated"],
+            event_types=[EventType.UPDATED, EventType.ADDED, EventType.UPDATED],
         )
     )
 
     subscription = _run(toolset._subscription_registry.get_subscription("query-1", "agent-1"))
     assert subscription is not None
+    assert subscription.query_id == "query-1"
     assert subscription.topic == "topic-b"
-    assert subscription.added == PubSubPayload(task="added")
-    assert subscription.updated == PubSubPayload(task="updated")
-    assert subscription.deleted is None
+    assert subscription.event_types == [EventType.UPDATED, EventType.ADDED]
 
 
-def test_subscribe_none_maps_to_all_operations() -> None:
+def test_subscribe_rejects_empty_event_types() -> None:
     toolset = _make_toolset()
 
-    _run(toolset.subscribe("query-1", "agent-1", "topic-a", operations=None))
-
-    subscription = _run(toolset._subscription_registry.get_subscription("query-1", "agent-1"))
-    assert subscription is not None
-    assert subscription.added == PubSubPayload(task="added")
-    assert subscription.updated == PubSubPayload(task="updated")
-    assert subscription.deleted == PubSubPayload(task="deleted")
+    try:
+        _run(toolset.subscribe("query-1", "agent-1", "topic-a", event_types=[]))
+    except Exception:
+        pass
+    else:
+        raise AssertionError("subscribe should reject an empty event_types list")
 
 
 def test_unsubscribe_clears_requested_operations_and_deletes_empty_subscription() -> None:
     toolset = _make_toolset()
 
-    _run(toolset.subscribe("query-1", "agent-1", "topic-a", operations=None))
-    _run(toolset.unsubscribe("query-1", "agent-1", operations=["added", "added"]))
+    _run(toolset.subscribe("query-1", "agent-1", "topic-a", event_types=[EventType.ADDED, EventType.UPDATED, EventType.DELETED]))
+    _run(toolset.unsubscribe("query-1", "agent-1", event_types=[EventType.ADDED, EventType.ADDED]))
 
     subscription = _run(toolset._subscription_registry.get_subscription("query-1", "agent-1"))
     assert subscription is not None
-    assert subscription.added is None
-    assert subscription.updated == PubSubPayload(task="updated")
-    assert subscription.deleted == PubSubPayload(task="deleted")
+    assert subscription.event_types == [EventType.UPDATED, EventType.DELETED]
 
-    _run(toolset.unsubscribe("query-1", "agent-1", operations=None))
+    _run(toolset.unsubscribe("query-1", "agent-1", event_types=[EventType.UPDATED, EventType.DELETED]))
     assert _run(toolset._subscription_registry.get_subscription("query-1", "agent-1")) is None
 
 
 def test_unsubscribe_is_idempotent_when_subscription_is_missing() -> None:
     toolset = _make_toolset()
 
-    result = _run(toolset.unsubscribe("query-1", "agent-1", operations="deleted"))
+    result = _run(toolset.unsubscribe("query-1", "agent-1", event_types=[EventType.DELETED]))
     assert "successfully unsubscribed" in result
     assert _run(toolset._subscription_registry.get_subscription("query-1", "agent-1")) is None

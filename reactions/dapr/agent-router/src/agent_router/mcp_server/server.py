@@ -18,9 +18,9 @@ import logging
 
 from fastmcp import FastMCP
 
-from mcp_server.tools import DrasiQueryToolSet
-from subscription import SubscriptionRegistry
-from utils.types import ReactionConfig
+from agent_router.mcp_server.tools import DrasiQueryToolSet
+from agent_router.subscription import SubscriptionRegistry
+from agent_router.utils.types import QueryConfig
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +32,8 @@ class MCPServer:
 
     def __init__(self,
         mcp: FastMCP,
-        pubsub_name: str,
         subscription_registry: SubscriptionRegistry,
-        reaction_config: ReactionConfig,
+        query_configs: dict[str, QueryConfig],
         name: str = "drasi-agent-router-mcp"
     ) -> None:
         """
@@ -43,15 +42,14 @@ class MCPServer:
         Args:
             mcp (FastMCP): The FastMCP server instance.
             subscription_registry (SubscriptionRegistry): The subscription registry.
-            reaction_config (ReactionConfig): The static Drasi reaction configuration.
-            name (str): The name of the server. Defaults to "drasi-agent-router-mcp".
+            query_configs (dict[str, QueryConfig]): The static configuration for all queries.
+            name (str): Name for the server (used for logging). Defaults to "drasi-agent-router-mcp".
         """
         self._name = name
         self._tools = DrasiQueryToolSet(
             mcp=mcp,
-            pubsub_name=pubsub_name,
             subscription_registry=subscription_registry,
-            reaction_config=reaction_config,
+            query_configs=query_configs,
         )
 
         logger.info(f"MCPServer initialized with name: {self._name} and tools registered")

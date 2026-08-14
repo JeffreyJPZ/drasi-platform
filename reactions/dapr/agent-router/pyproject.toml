@@ -13,5 +13,8 @@ dependencies = [
     "pydantic-handlebars==0.2.1",
 ]
 
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
 [tool.uv.sources]
 drasi-reaction-sdk = { path = "../../sdk/python", editable = true }  # Local package allows for more recent fastapi versions

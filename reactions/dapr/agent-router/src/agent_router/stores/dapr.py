@@ -18,60 +18,89 @@
 # https://github.com/dapr/dapr-agents/blob/29dee4b9418e50f5bb6c0f434a154284accb00d2/dapr_agents/agents/components.py
 # https://github.com/dapr/dapr-agents/blob/29dee4b9418e50f5bb6c0f434a154284accb00d2/dapr_agents/storage/daprstores/stateservice.py
 
+import asyncio
 import json
 import logging
 import random
-import time
 from typing import Any, Callable
 
+from cachetools import LRUCache
 from dapr.clients import DaprClient
 from dapr.clients.grpc._state import Concurrency, Consistency, StateOptions
 from pydantic import BaseModel, ValidationError
 
-from stores.base import StateStore, TState
+from agent_router.stores.base import StateStore, TState
 
 logger = logging.getLogger(__name__)
 
+_ETAG_CACHE_MAXSIZE = 1024
 
+
+# TODO: make all dapr client calls async
 class DaprStateStore(StateStore[TState]):
     """
     Dapr key-value state store for persisting and recovering subscription state.
+    Note: Access is not synchronized — callers must synchronize access with their own locks.
     """
 
     def __init__(
         self,
+        *,
         dapr_client: DaprClient,
+        store_name: str,
         state_model_cls: type[TState],
         state_key_prefix: str | None = None,
-        name: str | None = None,
+        name: str = "drasi-agent-router-dapr-store",
     ) -> None:
         """
         Initialize a DaprStateStore instance.
 
         Args:
             dapr_client (DaprClient): Injected Dapr client.
+            store_name (str): The Dapr state store component name.
             state_model_cls (type[TState]): The state model class used for validation. Must not take any required arguments.
             state_key_prefix (str | None): Optional prefix for state keys.
-            name (str | None): Optional state store name. Defaults to "drasi-pubsub-router-store" if omitted.
+            name (str): The name for the store. Defaults to "drasi-agent-router-dapr-store".
         """
         super().__init__(state_model_cls=state_model_cls, state_key_prefix=state_key_prefix, name=name)
+
         self._dapr_client = dapr_client
+        self._store_name = store_name
 
         # Per-instance-id etag cache replaces the single _last_etag field.
-        # Using a dict keyed by state-store key prevents concurrent writes from
-        # overwriting each other's cached etag.
-        # TODO: make this a TTL cache?
-        self._etag_cache: dict[str, str | None] = {}
+        self._etag_cache = LRUCache[str, str | None] = LRUCache(
+            maxsize=_ETAG_CACHE_MAXSIZE
+        )
+        self._etag_cache_lock = asyncio.Lock()
 
         self._save_options = StateOptions(
             concurrency=Concurrency.first_write,
             consistency=Consistency.strong,
         )
-        self._max_etag_attempts = 10  # TODO: make this customizable
+        self._max_etag_attempts = 10  # TODO: make this configurable
         self._retry_attempts = max(1, 3)
         self._retry_initial_backoff = max(0.0, 0.1)
         self._retry_backoff_multiplier = max(1.0, 2.0)
         self._retry_jitter = max(0.0, 0.1)
+
+
+    async def has_key(self, key: str) -> bool:
+        """
+        Check whether a logical key exists in the backing Dapr state store.
+
+        Args:
+            key (str): The logical key for which to check existence (unprefixed).
+
+        Returns:
+            bool: True if the key exists, False otherwise.
+        """
+        state_key = self._normalize_key(key)
+        meta = self._state_metadata_for_key(state_key)
+        snapshot, _ = await self._load_with_etag(
+            key=state_key,
+            state_metadata=meta,
+        )
+        return snapshot is not None
 
 
     async def get_state(self, key: str) -> TState:
@@ -94,14 +123,15 @@ class DaprStateStore(StateStore[TState]):
         state_key = self._normalize_key(key)
         meta = self._state_metadata_for_key(state_key)
 
-        snapshot, etag = self._load_with_etag(
+        snapshot, etag = await self._load_with_etag(
             key=state_key,
             state_metadata=meta,
         )
         if snapshot is None:
             return self._default_state_model_factory()
 
-        self._etag_cache[state_key] = etag
+        async with self._etag_cache_lock:
+            self._etag_cache[state_key] = etag
 
         try:
             if isinstance(snapshot, dict):
@@ -142,27 +172,28 @@ class DaprStateStore(StateStore[TState]):
         value = value.model_dump(mode="json")
 
         # Use the per-key cached etag from a prior get_state when available to avoid
-        # an extra round-trip.  Falls back to load_with_etag on the first
+        # an extra round-trip. Falls back to load_with_etag on the first
         # attempt when no cached etag exists, and always on retries.
-        etag = self._etag_cache.pop(state_key, None)
+        async with self._etag_cache_lock:
+            etag = self._etag_cache.pop(state_key, None)
 
         if etag is None:
             # No cached etag — ensure the document exists so we get one.
             try:
-                current, etag = self._load_with_etag(
+                current, etag = await self._load_with_etag(
                     key=state_key,
                     state_metadata=meta,
                 )
                 if etag is None:
                     # Initialize to get an etag
-                    self._save(
+                    await self._save(
                         key=state_key,
                         value=current if isinstance(current, dict) else value,
                         etag=None,
                         state_metadata=meta,
                         state_options=self._save_options,
                     )
-                    _, etag = self._load_with_etag(
+                    _, etag = await self._load_with_etag(
                         key=state_key,
                         state_metadata=meta,
                     )
@@ -175,11 +206,11 @@ class DaprStateStore(StateStore[TState]):
             try:
                 if etag is None:
                     # Shouldn't happen normally, but recover gracefully.
-                    _, etag = self._load_with_etag(
+                    _, etag = await self._load_with_etag(
                         key=state_key,
                         state_metadata=meta,
                     )
-                self._save(
+                await self._save(
                     key=state_key,
                     value=value,
                     etag=etag,
@@ -202,7 +233,7 @@ class DaprStateStore(StateStore[TState]):
                     return
                 # Refresh etag for next retry.
                 etag = None
-                time.sleep(min(0.25 * attempt, 1.0) * (1 + random.uniform(0, 0.25)))
+                await asyncio.sleep(min(0.25 * attempt, 1.0) * (1 + random.uniform(0, 0.25)))
 
 
     async def purge_state(self, key: str) -> None:
@@ -220,7 +251,7 @@ class DaprStateStore(StateStore[TState]):
         state_key = self._normalize_key(key)
         meta = self._state_metadata_for_key(state_key)
         try:
-            self._delete(key=state_key, state_metadata=meta)
+            await self._delete(key=state_key, state_metadata=meta)
             logger.info(
                 "Purged state for key=%s", state_key
             )
@@ -230,11 +261,16 @@ class DaprStateStore(StateStore[TState]):
                 state_key,
                 exc,
             )
+        finally:
+            # Drop any cached etag for this instance so teardown reclaims the slot
+            # even when a read-only get_state left an entry behind.
+            async with self._etag_cache_lock:
+                self._etag_cache.pop(state_key, None)
 
 
     def _state_metadata_for_key(self, key: str) -> dict[str, str]:
         """Return Dapr state metadata including partition key."""
-        meta = {"contentType": "application/json"}  # TODO: make this customizable
+        meta = {"contentType": "application/json"}
         meta["partitionKey"] = key
         return meta
 
@@ -311,7 +347,7 @@ class DaprStateStore(StateStore[TState]):
         return StateOptions(**dict(state_options))
 
 
-    def _load_with_etag(
+    async def _load_with_etag(
         self,
         *,
         key: str,
@@ -330,18 +366,18 @@ class DaprStateStore(StateStore[TState]):
             (dict | BaseModel | None, etag | None)
         """
         logger.debug(
-            "Loading state with etag from %s key=%s", self.store_name, key
+            "Loading state with etag from %s key=%s", self._store_name, key
         )
 
         def call() -> Any:
             return self._dapr_client.get_state(
-                store_name=self.store_name,
+                store_name=self._store_name,
                 key=key,
                 state_metadata=state_metadata,
             )
 
         try:
-            response = self._with_retries(call)
+            response = await self._with_retries(call)
         except Exception as exc:  # noqa: BLE001
             raise RuntimeError(
                 f"Failed to load state for key '{key}': {exc}"
@@ -367,7 +403,7 @@ class DaprStateStore(StateStore[TState]):
         return payload, etag
 
 
-    def _save(
+    async def _save(
         self,
         *,
         key: str,
@@ -397,7 +433,7 @@ class DaprStateStore(StateStore[TState]):
 
         logger.debug(
             "Saving state to %s key=%s etag=%s ttl=%s",
-            self.store_name,
+            self._store_name,
             key,
             etag,
             ttl_in_seconds,
@@ -405,7 +441,7 @@ class DaprStateStore(StateStore[TState]):
 
         def call() -> None:
             self._dapr_client.save_state(
-                store_name=self.store_name,
+                store_name=self._store_name,
                 key=key,
                 value=payload_str,
                 etag=etag,
@@ -414,14 +450,14 @@ class DaprStateStore(StateStore[TState]):
             )
 
         try:
-            self._with_retries(call)
+            await self._with_retries(call)
         except Exception as exc:  # noqa: BLE001
             raise RuntimeError(
                 f"Failed to save state for key '{key}': {exc}"
             ) from exc
 
 
-    def _delete(
+    async def _delete(
         self,
         *,
         key: str,
@@ -439,12 +475,12 @@ class DaprStateStore(StateStore[TState]):
             state_options: Dict or `StateOptions` controlling delete behavior.
         """
         logger.debug(
-            "Deleting state from %s key=%s etag=%s", self.store_name, key, etag
+            "Deleting state from %s key=%s etag=%s", self._store_name, key, etag
         )
 
         def call() -> None:
             self._dapr_client.delete_state(
-                store_name=self.store_name,
+                store_name=self._store_name,
                 key=key,
                 etag=etag,
                 options=self._coerce_state_options(state_options),
@@ -452,7 +488,7 @@ class DaprStateStore(StateStore[TState]):
             )
 
         try:
-            self._with_retries(call)
+            await self._with_retries(call)
         except Exception as exc:  # noqa: BLE001
             # TODO: throw more specific exception
             raise RuntimeError(
@@ -460,7 +496,7 @@ class DaprStateStore(StateStore[TState]):
             ) from exc
 
 
-    def _with_retries(self, func: Callable[[], Any]) -> Any:
+    async def _with_retries(self, func: Callable[[], Any]) -> Any:
         """Execute a callable with retry/backoff/jitter."""
         delay = self._retry_initial_backoff
         attempt = 0
@@ -475,7 +511,7 @@ class DaprStateStore(StateStore[TState]):
                     1 + random.uniform(-self._retry_jitter, self._retry_jitter)
                 )
                 if sleep_for > 0:
-                    time.sleep(max(0.0, sleep_for))
+                    await asyncio.sleep(max(0.0, sleep_for))
                 delay *= self._retry_backoff_multiplier
                 logger.debug(
                     "Retrying state operation after error: %s", exc, exc_info=True

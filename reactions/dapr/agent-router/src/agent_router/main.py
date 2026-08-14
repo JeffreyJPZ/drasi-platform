@@ -14,14 +14,28 @@
 # limitations under the License.
 #
 
-from runner import AppRunner
+import os
+
+from agent_router.runner import AppRunner
+from agent_router.utils.types import PubSubConfig, StateConfig
+
+# TODO: remove these defaults
+PUBSUB_NAME = os.getenv("PubSubName", "drasi-pubsub")
+STATE_STORE_NAME = os.getenv("StateStoreName", "drasi-agent-router-dapr-store")
+STATE_STORE_KEY_PREFIX = os.getenv("StateStoreKeyPrefix", None)
 
 
 def main() -> None:
     runner = None
-    # TODO: support persistent and in-memory backends via config
+    # TODO: could maybe resolve component names from env inside runner
     try:
-        runner = AppRunner()
+        runner = AppRunner(
+            pubsub_config=PubSubConfig(pubsub_name=PUBSUB_NAME),
+            state_config=StateConfig(
+                store_name=STATE_STORE_NAME,
+                state_key_prefix=STATE_STORE_KEY_PREFIX,
+            ),
+        )
         runner.start()
     finally:
         if runner:
