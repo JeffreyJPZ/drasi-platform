@@ -36,6 +36,7 @@ from agent_router.utils.types import EventType, PubSubConfig, QuerySubscription
 logger = logging.getLogger(__name__)
 
 
+# TODO: add/fix logging
 class AgentRouter():
     """
     Dispatches Drasi events to subscribed agents via Dapr pub/sub.
@@ -207,8 +208,6 @@ class AgentRouter():
         serialized = event.model_dump_json()
         return (subscription, serialized)
 
-
-    # TODO: add logging
     def _make_on_change_event(self) -> AsyncChangeEventFunc:
         async def on_change_event(event: ChangeEvent, query_config: dict[str, Any] | None) -> None:
             if query_config is None:

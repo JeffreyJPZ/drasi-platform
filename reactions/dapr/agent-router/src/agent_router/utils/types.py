@@ -79,11 +79,11 @@ class StateConfig(BaseModel):
     Configuration for subscription state.
 
     Attributes:
-        store_name (str | None): Name of the Dapr state store component to use for persistence.
+        state_store_name (str | None): Name of the Dapr state store component to use for persistence.
         state_key_prefix (str | None): Optional prefix to use for state keys to avoid collisions.
     """
 
-    store_name: str | None = None
+    state_store_name: str | None = None
     state_key_prefix: str | None = None
 
 

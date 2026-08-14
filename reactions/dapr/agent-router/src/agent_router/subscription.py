@@ -50,7 +50,7 @@ class SubscriptionRegistry():
         )
         self._state_store = DaprStateStore[QuerySubscriptionState](
             dapr_client=dapr_client,
-            store_name=state_config.store_name,
+            state_store_name=state_config.state_store_name,
             state_model_cls=QuerySubscriptionState,
             state_key_prefix=state_config.state_key_prefix,
         )

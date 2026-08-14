@@ -36,7 +36,7 @@ def main() -> None:
         runner = AppRunner(
             pubsub_config=PubSubConfig(pubsub_name=PUBSUB_NAME),
             state_config=StateConfig(
-                store_name=STATE_STORE_NAME,
+                state_store_name=STATE_STORE_NAME,
                 state_key_prefix=STATE_STORE_KEY_PREFIX,
             ),
         )

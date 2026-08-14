@@ -29,7 +29,7 @@ def _run(coro):
 def _make_registry() -> SubscriptionRegistry:
     return SubscriptionRegistry(
         dapr_client=Mock(),
-        state_config=StateConfig(store_name="test"),
+        state_config=StateConfig(state_store_name="test"),
     )
 
 

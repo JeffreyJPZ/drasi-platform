@@ -139,17 +139,17 @@ class AppRunner():
         Raises:
             RuntimeError: If no Dapr state store component is found.
         """
-        if not state_config.store_name:
+        if not state_config.state_store_name:
             raise RuntimeError("State store component name is not configured. Please provide a valid name.")
 
         metadata = dapr_client.get_metadata()
         registered_components = metadata.registered_components or []
 
         for component in registered_components:
-            if "state" in component.type.lower() and component.name == state_config.store_name:
+            if "state" in component.type.lower() and component.name == state_config.state_store_name:
                 return
 
-        raise RuntimeError(f"State store component '{state_config.store_name}' could not be found. Please ensure that it is registered with the Dapr sidecar.")
+        raise RuntimeError(f"State store component '{state_config.state_store_name}' could not be found. Please ensure that it is registered with the Dapr sidecar.")
 
 
     def _combine_routes(self, app: FastAPI, mcp: FastMCP) -> None:

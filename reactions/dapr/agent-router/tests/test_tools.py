@@ -40,7 +40,7 @@ def _make_toolset() -> AgentRouterToolset:
     }
     registry = SubscriptionRegistry(
         dapr_client=Mock(),
-        state_config=StateConfig(store_name="test"),
+        state_config=StateConfig(state_store_name="test"),
     )
     return AgentRouterToolset(
         mcp=DummyMCP(),

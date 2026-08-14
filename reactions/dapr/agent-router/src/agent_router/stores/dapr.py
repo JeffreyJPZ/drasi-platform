@@ -47,7 +47,7 @@ class DaprStateStore(StateStore[TState]):
         self,
         *,
         dapr_client: DaprClient,
-        store_name: str,
+        state_store_name: str,
         state_model_cls: type[TState],
         state_key_prefix: str | None = None,
         name: str = "drasi-agent-router-dapr-store",
@@ -57,15 +57,15 @@ class DaprStateStore(StateStore[TState]):
 
         Args:
             dapr_client (DaprClient): Injected Dapr client.
-            store_name (str): The Dapr state store component name.
+            state_store_name (str): The Dapr state store component name.
             state_model_cls (type[TState]): The state model class used for validation. Must not take any required arguments.
             state_key_prefix (str | None): Optional prefix for state keys.
-            name (str): The name for the store. Defaults to "drasi-agent-router-dapr-store".
+            name (str): The name for the store (used for logging). Defaults to "drasi-agent-router-dapr-store".
         """
         super().__init__(state_model_cls=state_model_cls, state_key_prefix=state_key_prefix, name=name)
 
         self._dapr_client = dapr_client
-        self._store_name = store_name
+        self._state_store_name = state_store_name
 
         # Per-instance-id etag cache replaces the single _last_etag field.
         self._etag_cache: LRUCache[str, str | None] = LRUCache(
@@ -366,12 +366,12 @@ class DaprStateStore(StateStore[TState]):
             (dict | BaseModel | None, etag | None)
         """
         logger.debug(
-            "Loading state with etag from %s key=%s", self._store_name, key
+            "Loading state with etag from %s key=%s", self._state_store_name, key
         )
 
         def call() -> Any:
             return self._dapr_client.get_state(
-                store_name=self._store_name,
+                store_name=self._state_store_name,
                 key=key,
                 state_metadata=state_metadata,
             )
@@ -433,7 +433,7 @@ class DaprStateStore(StateStore[TState]):
 
         logger.debug(
             "Saving state to %s key=%s etag=%s ttl=%s",
-            self._store_name,
+            self._state_store_name,
             key,
             etag,
             ttl_in_seconds,
@@ -441,7 +441,7 @@ class DaprStateStore(StateStore[TState]):
 
         def call() -> None:
             self._dapr_client.save_state(
-                store_name=self._store_name,
+                store_name=self._state_store_name,
                 key=key,
                 value=payload_str,
                 etag=etag,
@@ -475,12 +475,12 @@ class DaprStateStore(StateStore[TState]):
             state_options: Dict or `StateOptions` controlling delete behavior.
         """
         logger.debug(
-            "Deleting state from %s key=%s etag=%s", self._store_name, key, etag
+            "Deleting state from %s key=%s etag=%s", self._state_store_name, key, etag
         )
 
         def call() -> None:
             self._dapr_client.delete_state(
-                store_name=self._store_name,
+                store_name=self._state_store_name,
                 key=key,
                 etag=etag,
                 options=self._coerce_state_options(state_options),
