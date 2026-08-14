@@ -57,7 +57,7 @@ class SubscriptionRegistry():
         self._lock = asyncio.Lock()
 
 
-    def new_subscription_id(agent_id: str) -> str:
+    def new_subscription_id(self, agent_id: str) -> str:
         """
         Generate a subscription ID from an agent ID. Currently a no-op that echoes the agent ID.
 

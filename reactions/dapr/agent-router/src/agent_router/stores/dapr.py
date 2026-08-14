@@ -68,7 +68,7 @@ class DaprStateStore(StateStore[TState]):
         self._store_name = store_name
 
         # Per-instance-id etag cache replaces the single _last_etag field.
-        self._etag_cache = LRUCache[str, str | None] = LRUCache(
+        self._etag_cache: LRUCache[str, str | None] = LRUCache(
             maxsize=_ETAG_CACHE_MAXSIZE
         )
         self._etag_cache_lock = asyncio.Lock()

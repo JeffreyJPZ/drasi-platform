@@ -15,7 +15,7 @@
 #
 
 import logging
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
@@ -53,7 +53,7 @@ class AgentRouterToolset:
         Args:
             mcp (FastMCP): Injected FastMCP server instance.
             subscription_registry (SubscriptionRegistry): Injected subscription registry.
-            query_configs (dict[str, QueryConfig]): Static configuration for all queries.
+            query_configs (dict[str, QueryConfig]): Reference to the static configuration for all queries.
         """
         self._subscription_registry = subscription_registry
         self._query_configs = query_configs
@@ -71,7 +71,7 @@ class AgentRouterToolset:
         agent_id: str,
         topic: str,
         event_types: Annotated[list[EventType], Field(min_length=1)],
-    ) -> str:
+    ) -> SubscribeResult:
         """
         Subscribe an agent to a Drasi query on a given pub/sub topic.
 
@@ -81,6 +81,12 @@ class AgentRouterToolset:
             topic (str): Name of the topic on which the agent will receive messages.
             event_types (list[EventType]): List of event types to which the agent is subscribed.
                 Must contain at least one event type.
+
+        Returns:
+            SubscribeResult: Result of the subscription operation.
+
+        Raises:
+            ToolError: If the query_id is unknown or if event_types is empty.
         """
         # Deduplicate event types
         event_types = list(dict.fromkeys(event_types))
@@ -95,9 +101,9 @@ class AgentRouterToolset:
         if self._query_configs.get(query_id) is None:
             raise ToolError(f"Unknown query_id '{query_id}'")
 
-        # TODO: verify that the agent is allowed to subscribe to the query
         subscription_id = self._subscription_registry.new_subscription_id(agent_id)
 
+        # TODO: verify that the agent is allowed to subscribe
         await self._subscription_registry.upsert_subscription(
             query_id=query_id,
             subscription_id=subscription_id,
@@ -132,6 +138,12 @@ class AgentRouterToolset:
             query_id (str): Unique identifier of the query to unsubscribe from.
             agent_id (str): Unique identifier of the agent to unsubscribe.
             subscription_id (str): Unique identifier of the subscription to remove.
+
+        Returns:
+            UnsubscribeResult: Result of the unsubscription operation.
+
+        Raises:
+            ToolError: If the query_id is unknown.
         """
         logger.info(
             f"Unsubscribing agent '{agent_id}' from query '{query_id}', subscription_id='{subscription_id}'",
@@ -174,17 +186,32 @@ class AgentRouterToolset:
         List all Drasi queries.
 
         Returns:
-            list[QueryConfig]: A list of all query configurations.
+            ListQueriesResult: A result containing a list of all query configurations.
         """
         logger.info("Listing all queries")
 
-        return ListQueriesResult(
-            queries=[
-                QueryResult(
-                    query_id=query_id,
-                    title=self._query_configs.get(query_id, {}).title,
-                    description=self._query_configs.get(query_id, {}).description,
-                )
-                for query_id in self._query_configs.keys()
-            ]
+        queries = [
+            self._make_query_result(query_id, query_config)
+            for query_id, query_config in self._query_configs.items()
+        ]
+
+        return ListQueriesResult(queries=queries)
+
+
+    def _make_query_result(self, query_id: str, query_config: dict[str, Any]) -> QueryResult:
+        """
+        Validate and create a QueryResult object from a query and its configuration.
+
+        Args:
+            query_id (str): Unique identifier for the query.
+            query_config (dict[str, Any]): Static query configuration.
+
+        Returns:
+            QueryResult: A QueryResult object representing the query.
+        """
+        config = QueryConfig(**query_config)
+        return QueryResult(
+            query_id=query_id,
+            title=config.title,
+            description=config.description,
         )

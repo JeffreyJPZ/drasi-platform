@@ -48,16 +48,10 @@ class StateStore(Generic[TState]):
         """
         self._state_model_cls = state_model_cls
         self._state_key_prefix = state_key_prefix
-        self._name = name
         # TODO: assumes model takes in no args
         # TODO: should this be configurable
         self._default_state_model_factory = lambda: state_model_cls()
-
-
-    @property
-    def name(self) -> str:
-        """Get the name of the state store."""
-        return self._name
+        self._name = name
 
 
     def _normalize_key(self, key: str) -> str:

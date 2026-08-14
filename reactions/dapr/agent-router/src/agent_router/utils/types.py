@@ -17,7 +17,7 @@
 from enum import StrEnum
 from typing import Annotated
 
-from pydantic import BaseModel, Field, RootModel
+from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 
 # ------------------------------------------
@@ -110,8 +110,13 @@ class QuerySubscription(BaseModel):
     event_types: Annotated[list[EventType], Field(min_length=1)]
 
 
-# TODO: can this be optimized?
 class QuerySubscriptionState(RootModel[dict[str, QuerySubscription]]):
+    """
+    State model for query subscriptions.
+
+    Attributes:
+        root (dict[str, QuerySubscription]): A map of subscription identifiers to their corresponding subscription configuration.
+    """
     root: dict[str, QuerySubscription] = Field(default_factory=dict)
 
 

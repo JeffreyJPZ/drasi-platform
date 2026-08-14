@@ -122,7 +122,7 @@ class AppRunner():
         registered_components = metadata.registered_components or []
 
         for component in registered_components:
-            if "pubsub" in component.type.lower() and component.name == pubsub_config.name:
+            if "pubsub" in component.type.lower() and component.name == pubsub_config.pubsub_name:
                 return
 
         raise RuntimeError(f"Pub/sub component '{pubsub_config.pubsub_name}' could not be found. Please ensure that it is registered with the Dapr sidecar.")

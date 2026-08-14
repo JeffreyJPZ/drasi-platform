@@ -40,9 +40,9 @@ class MCPServer:
         Initialize an MCPServer instance.
 
         Args:
-            mcp (FastMCP): The FastMCP server instance.
-            subscription_registry (SubscriptionRegistry): The subscription registry.
-            query_configs (dict[str, QueryConfig]): The static configuration for all queries.
+            mcp (FastMCP): Injected FastMCP server instance.
+            subscription_registry (SubscriptionRegistry): Injected subscription registry.
+            query_configs (dict[str, QueryConfig]): Reference to the static configuration for all queries.
             name (str): Name for the server (used for logging). Defaults to "drasi-agent-router-mcp".
         """
         self._name = name

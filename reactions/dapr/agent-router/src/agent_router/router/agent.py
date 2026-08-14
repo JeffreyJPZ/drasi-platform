@@ -14,11 +14,11 @@
 # limitations under the License.
 #
 
+import logging
 from typing import Any
 
 from dapr.clients import DaprClient
 from fastapi import FastAPI
-from pydantic import TypeAdapter
 from pydantic_handlebars import render
 
 from drasi.reaction.models.ChangeEvent import ChangeEvent
@@ -31,7 +31,9 @@ from drasi.reaction.sdk import AsyncChangeEventFunc, AsyncControlEventFunc, Dras
 from drasi.reaction.utils import yaml_query_configs
 
 from agent_router.subscription import SubscriptionRegistry
-from agent_router.utils.types import EventType, PubSubConfig, QuerySubscription, QueryConfig
+from agent_router.utils.types import EventType, PubSubConfig, QuerySubscription
+
+logger = logging.getLogger(__name__)
 
 
 class AgentRouter():
@@ -68,18 +70,18 @@ class AgentRouter():
             app=app,
             host="0.0.0.0",
         )
-        self._query_config_adapter = TypeAdapter(dict[str, QueryConfig])
 
 
     @property
-    def query_configs(self) -> dict[str, QueryConfig]:
+    def query_configs(self) -> dict[str, Any]:
         """
-        Return a copy of the static query configurations.
+        Return a reference to the static query configuration.
 
         Returns:
-            dict[str, QueryConfig]: A map of query IDs to their corresponding configuration.
+            dict[str, Any]: A map of query IDs to their corresponding configuration.
         """
-        return self._query_config_adapter.validate_python(self._reaction.query_configs)
+        # TODO: may want to validate but query configs are populated at reaction startup
+        return self._reaction.query_configs
 
 
     def start(self) -> None:
@@ -95,6 +97,7 @@ class AgentRouter():
     def _get_event_type(self, event: ChangeEvent) -> EventType | None:
         """
         Return the event type of a Drasi change event.
+        Assumes that the event contains only one type of change (added, updated, or deleted).
 
         Args:
             event (ChangeEvent): The Drasi change event.
@@ -126,7 +129,6 @@ class AgentRouter():
         # clients should perform their own deduplication based on payload content or similar.
         # This sequence number is a dummy to enable validation.
         seq = 0
-
         unpacked_events: list[ChangeNotification] = []
 
         for record in event.addedResults:
@@ -141,7 +143,6 @@ class AgentRouter():
             )
 
         for record in event.updatedResults:
-            # Assume item has "before" and "after" attributes
             before = record.before.model_dump() if record.before is not None else None
             after = record.after.model_dump() if record.after is not None else None
             unpacked_events.append(
@@ -181,7 +182,7 @@ class AgentRouter():
         # TODO: add more metadata
         self._dapr_client.publish_event(
             pubsub_name=pubsub_name,
-            topic=topic,
+            topic_name=topic,
             data=event,
             data_content_type="application/json",
         )
@@ -207,14 +208,10 @@ class AgentRouter():
         return (subscription, serialized)
 
 
+    # TODO: add logging
     def _make_on_change_event(self) -> AsyncChangeEventFunc:
         async def on_change_event(event: ChangeEvent, query_config: dict[str, Any] | None) -> None:
             if query_config is None:
-                return
-
-            # Debatch event to unpacked format
-            unpacked_events = self._to_unpacked_events(event)
-            if not unpacked_events:
                 return
 
             event_type = self._get_event_type(event)
@@ -222,12 +219,25 @@ class AgentRouter():
                 # Defensive guard — shouldn't happen
                 return
 
+            logger.info(
+                f"Received Drasi change event for query '{event.queryId}' with event type '{event_type.value}'"
+            )
+
+            # Debatch event to unpacked format
+            unpacked_events = self._to_unpacked_events(event)
+            if not unpacked_events:
+                return
+
             # Get all agents that are interested in this event type
             subscriptions = await self._subscription_registry.get_subscriptions(
                 query_id=event.queryId,
                 event_types=[event_type],
             )
-    
+
+            logger.info(
+                f"Found {len(subscriptions)} subscriptions for query '{event.queryId}' and event type '{event_type.value}'"
+            )
+
             bindings: list[tuple[QuerySubscription, str]] = []
             for evt in unpacked_events:
                 for sub in subscriptions:

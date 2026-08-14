@@ -14,10 +14,14 @@
 # limitations under the License.
 #
 
+import logging
 import os
 
 from agent_router.runner import AppRunner
 from agent_router.utils.types import PubSubConfig, StateConfig
+
+# TODO: make this configurable?
+logging.basicConfig(level=logging.INFO)
 
 # TODO: remove these defaults
 PUBSUB_NAME = os.getenv("PubSubName", "drasi-pubsub")

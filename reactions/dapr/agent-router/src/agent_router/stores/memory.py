@@ -43,7 +43,7 @@ class InMemoryStateStore(StateStore[TState]):
         """
         super().__init__(state_model_cls=state_model_cls, state_key_prefix=state_key_prefix, name=name)
 
-        self._store: LRUCache[str, str] = LRUCache(maxsize=1024)  # TODO: make this configurable
+        self._store: LRUCache[str, str | None] = LRUCache(maxsize=1024)  # TODO: make this configurable
 
 
     async def has_key(self, key: str) -> bool:
