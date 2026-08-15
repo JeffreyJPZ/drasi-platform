@@ -108,7 +108,8 @@ class SubscriptionRegistry():
                 return subscriptions_list
 
             return [
-                sub for sub in subscriptions_list if any(event_type in sub.event_types for event_type in event_types)
+                sub for sub in subscriptions_list
+                if any(event_type in sub.event_types for event_type in event_types)
             ]
 
 
@@ -193,6 +194,7 @@ class SubscriptionRegistry():
             if subscriptions:
                 await self._save_subscription_state(query_id, state)
             else:
+                # TODO: should purging be done on the hot path?
                 await self._delete_subscription_state(query_id)
 
 

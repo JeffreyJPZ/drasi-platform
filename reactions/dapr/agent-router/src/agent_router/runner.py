@@ -25,7 +25,7 @@ from agent_router.router import AgentRouter
 from agent_router.subscription import SubscriptionRegistry
 
 
-# TODO: add more config for MCP server names, etc.
+# TODO: add more config for app and MCP server names.
 class AppRunner():
     """
     Lifecycle and dependency management for the Dapr Agent Router.
@@ -46,7 +46,8 @@ class AppRunner():
         # TODO: shutdown handlers
         self._dapr_client = DaprClient()
 
-        # Ensure component names are given and that the components are registered with the Dapr sidecar
+        # Ensure component names are given and
+        # components are registered with the Dapr sidecar
         self._ensure_pubsub(self._dapr_client, pubsub_config)
         self._ensure_statestore(self._dapr_client, state_config)
 
@@ -125,7 +126,10 @@ class AppRunner():
             if "pubsub" in component.type.lower() and component.name == pubsub_config.pubsub_name:
                 return
 
-        raise RuntimeError(f"Pub/sub component '{pubsub_config.pubsub_name}' could not be found. Please ensure that it is registered with the Dapr sidecar.")
+        raise RuntimeError(
+            f"Pub/sub component '{pubsub_config.pubsub_name}' could not be found. "
+            "Please ensure that it is registered with the Dapr sidecar."
+        )
 
 
     def _ensure_statestore(self, dapr_client: DaprClient, state_config: StateConfig) -> None:
@@ -149,7 +153,10 @@ class AppRunner():
             if "state" in component.type.lower() and component.name == state_config.state_store_name:
                 return
 
-        raise RuntimeError(f"State store component '{state_config.state_store_name}' could not be found. Please ensure that it is registered with the Dapr sidecar.")
+        raise RuntimeError(
+            f"State store component '{state_config.state_store_name}' could not be found. "
+            "Please ensure that it is registered with the Dapr sidecar."
+        )
 
 
     def _combine_routes(self, app: FastAPI, mcp: FastMCP) -> None:
