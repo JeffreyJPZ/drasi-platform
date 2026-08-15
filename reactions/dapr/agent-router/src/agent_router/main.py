@@ -17,7 +17,7 @@
 import logging
 import os
 
-from agent_router.runner import AppRunner
+from agent_router.runner import AgentRouterRunner
 from agent_router.utils.types import PubSubConfig, StateConfig
 
 # TODO: make this configurable?
@@ -33,7 +33,7 @@ def main() -> None:
     runner = None
     # TODO: could maybe resolve component names from env inside runner
     try:
-        runner = AppRunner(
+        runner = AgentRouterRunner(
             pubsub_config=PubSubConfig(pubsub_name=PUBSUB_NAME),
             state_config=StateConfig(
                 state_store_name=STATE_STORE_NAME,

@@ -25,8 +25,8 @@ from agent_router.router import AgentRouter
 from agent_router.subscription import SubscriptionRegistry
 
 
-# TODO: add more config for app and MCP server names.
-class AppRunner():
+# TODO: add more config for app and MCP server names
+class AgentRouterRunner():
     """
     Lifecycle and dependency management for the Dapr Agent Router.
     """
@@ -37,7 +37,7 @@ class AppRunner():
         state_config: StateConfig,
     ) -> None:
         """
-        Initialize an AppRunner instance.
+        Initialize an AgentRouterRunner instance.
 
         Args:
             pubsub_config (PubSubConfig): Configuration for Dapr pub/sub.
