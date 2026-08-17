@@ -64,6 +64,7 @@ class AgentRouterRunner():
             pubsub_config=pubsub_config,
             subscription_registry=self._subscription_registry,
         )
+        # TODO: expose query configuration through instructions
         self._mcp = FastMCP(name="drasi-agent-router-mcp")
         self._mcp_server = MCPServer(
             mcp=self._mcp,

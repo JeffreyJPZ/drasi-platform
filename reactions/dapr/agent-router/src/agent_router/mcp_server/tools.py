@@ -68,19 +68,21 @@ class AgentRouterToolset:
     async def subscribe(
         self,
         query_id: str,
+        event_types: Annotated[list[EventType], Field(min_length=1)],
         agent_id: str,
         topic: str,
-        event_types: Annotated[list[EventType], Field(min_length=1)],
     ) -> SubscribeResult:
         """
         Subscribe an agent to a Drasi query on a given pub/sub topic.
 
         Args:
             query_id (str): Unique identifier of the query to subscribe to.
-            agent_id (str): Unique identifier of the agent making the subscription.
-            topic (str): Name of the topic on which the agent will receive messages.
             event_types (list[EventType]): List of event types to which the agent is subscribed.
                 Must contain at least one event type.
+            agent_id (str): Unique identifier of the agent making the subscription.
+                Injected by the agent framework — must never be exposed to the LLM through the tool schema.
+            topic (str): Name of the topic on which the agent will receive messages.
+                Injected by the agent — must never be exposed to the LLM through the tool schema.
 
         Returns:
             SubscribeResult: Result of the subscription operation.
@@ -137,7 +139,9 @@ class AgentRouterToolset:
         Args:
             query_id (str): Unique identifier of the query to unsubscribe from.
             agent_id (str): Unique identifier of the agent to unsubscribe.
+                Injected by the agent framework — must never be exposed to the LLM through the tool schema.
             subscription_id (str): Unique identifier of the subscription to remove.
+                Injected by the agent framework — must never be exposed to the LLM through the tool schema.
 
         Returns:
             UnsubscribeResult: Result of the unsubscription operation.
@@ -181,6 +185,7 @@ class AgentRouterToolset:
         )
 
 
+    # TODO: remove this?
     async def list_queries(self) -> ListQueriesResult:
         """
         List all Drasi queries.
