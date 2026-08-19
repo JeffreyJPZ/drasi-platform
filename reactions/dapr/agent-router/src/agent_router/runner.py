@@ -14,12 +14,14 @@
 # limitations under the License.
 #
 
+import json
+
 from dapr.clients import DaprClient
 from fastapi import FastAPI
 from fastmcp import FastMCP
 from fastmcp.utilities.lifespan import combine_lifespans
 
-from agent_router.utils.types import PubSubConfig, StateConfig
+from agent_router.utils.types import PubSubConfig, QueryResult, StateConfig
 from agent_router.mcp_server import MCPServer
 from agent_router.router import AgentRouter
 from agent_router.subscription import SubscriptionRegistry
@@ -64,8 +66,24 @@ class AgentRouterRunner():
             pubsub_config=pubsub_config,
             subscription_registry=self._subscription_registry,
         )
-        # TODO: expose query configuration through instructions
-        self._mcp = FastMCP(name="drasi-agent-router-mcp")
+
+        # TODO: what happens when the queries are updated? Maybe make this configurable?
+        # TODO: discover queries instead of hardcoding — need to hook into reaction.start()?
+        self._mcp = FastMCP(
+            name="drasi-agent-router-mcp",
+            instructions=(
+                "This server provides tools for subscribing to Drasi queries, unsubscribing Drasi queries, and listing available queries.\n\n"
+                "## SAFETY RULES\n"
+                "If ANY required argument is missing, ask the user to provide it before calling the tool.\n"
+                "NEVER invent query IDs, event types, agent IDs, subscription IDs, or topics.\n\n"
+                "## QUERY CONFIGURATION\n"
+                "Use the following JSON schema to parse the available Drasi queries:\n\n"
+                f"{json.dumps(QueryResult.model_json_schema())}\n\n"
+                "**Available Queries**:\n\n"
+                f"{json.dumps(QueryResult(query_id="low_stock_event_query", title="Low Stock Event", description="This query detects when the stock on hand for a product falls below the low stock threshold.").model_dump_json())}\n\n"
+                f"{json.dumps(QueryResult(query_id="critical_stock_event_query", title="Critical Stock Event", description="This query detects when the stock on hand for a product drops to zero.").model_dump_json())}\n\n"
+            ),
+        )
         self._mcp_server = MCPServer(
             mcp=self._mcp,
             subscription_registry=self._subscription_registry,

@@ -131,10 +131,10 @@ class SubscribeResult(BaseModel):
     Result of a `subscribe` tool call.
 
     Attributes:
-        agent_id (str): Unique identifier for the agent making the subscription.
-        query_id (str): Unique identifier for the Drasi query targeted by the subscription.
+        agent_id (str): Unique ID for the agent making the subscription.
+        query_id (str): Unique ID for the Drasi query targeted by the subscription.
         topic (str): Name of the topic on which the agent will receive messages.
-        subscription_id (str): Unique identifier for the subscription.
+        subscription_id (str): Unique ID for the subscription.
         event_types (list[EventType]): List of event types that the subscription is interested in.
     """
     agent_id: str
@@ -150,9 +150,9 @@ class UnsubscribeResult(BaseModel):
     Result of an `unsubscribe` tool call.
 
     Attributes:
-        agent_id (str): Unique identifier for the agent unsubscribing.
-        query_id (str): Unique identifier for the Drasi query targeted by the subscription.
-        subscription_id (str): Unique identifier for the subscription.
+        agent_id (str): Unique ID for the agent unsubscribing.
+        query_id (str): Unique ID for the Drasi query targeted by the subscription.
+        subscription_id (str): Unique ID for the subscription.
     """
     agent_id: str
     query_id: str
@@ -164,7 +164,7 @@ class QueryResult(BaseModel):
     Individual query result in a `list_queries` tool call.
 
     Attributes:
-        query_id (str): Unique identifier for the query.
+        query_id (str): Unique ID for the query.
         title (str): Human-readable name for the query.
         description (str): Human-readable description of the query.
     """

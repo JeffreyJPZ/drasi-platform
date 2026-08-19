@@ -52,9 +52,9 @@ def _make_toolset() -> AgentRouterToolset:
 def test_subscribe_normalizes_operations_and_upserts_existing_subscription() -> None:
     toolset = _make_toolset()
 
-    _run(toolset.subscribe("query-1", "agent-1", "topic-a", event_types=[EventType.ADDED]))
+    _run(toolset.subscribe_drasi_query("query-1", "agent-1", "topic-a", event_types=[EventType.ADDED]))
     _run(
-        toolset.subscribe(
+        toolset.subscribe_drasi_query(
             "query-1",
             "agent-1",
             "topic-b",
@@ -73,7 +73,7 @@ def test_subscribe_rejects_empty_event_types() -> None:
     toolset = _make_toolset()
 
     try:
-        _run(toolset.subscribe("query-1", "agent-1", "topic-a", event_types=[]))
+        _run(toolset.subscribe_drasi_query("query-1", "agent-1", "topic-a", event_types=[]))
     except Exception:
         pass
     else:
@@ -83,20 +83,20 @@ def test_subscribe_rejects_empty_event_types() -> None:
 def test_unsubscribe_clears_requested_operations_and_deletes_empty_subscription() -> None:
     toolset = _make_toolset()
 
-    _run(toolset.subscribe("query-1", "agent-1", "topic-a", event_types=[EventType.ADDED, EventType.UPDATED, EventType.DELETED]))
-    _run(toolset.unsubscribe("query-1", "agent-1", event_types=[EventType.ADDED, EventType.ADDED]))
+    _run(toolset.subscribe_drasi_query("query-1", "agent-1", "topic-a", event_types=[EventType.ADDED, EventType.UPDATED, EventType.DELETED]))
+    _run(toolset.unsubscribe_drasi_query("query-1", "agent-1", event_types=[EventType.ADDED, EventType.ADDED]))
 
     subscription = _run(toolset._subscription_registry.get_subscription("query-1", "agent-1"))
     assert subscription is not None
     assert subscription.event_types == [EventType.UPDATED, EventType.DELETED]
 
-    _run(toolset.unsubscribe("query-1", "agent-1", event_types=[EventType.UPDATED, EventType.DELETED]))
+    _run(toolset.unsubscribe_drasi_query("query-1", "agent-1", event_types=[EventType.UPDATED, EventType.DELETED]))
     assert _run(toolset._subscription_registry.get_subscription("query-1", "agent-1")) is None
 
 
 def test_unsubscribe_is_idempotent_when_subscription_is_missing() -> None:
     toolset = _make_toolset()
 
-    result = _run(toolset.unsubscribe("query-1", "agent-1", event_types=[EventType.DELETED]))
+    result = _run(toolset.unsubscribe_drasi_query("query-1", "agent-1", event_types=[EventType.DELETED]))
     assert "successfully unsubscribed" in result
     assert _run(toolset._subscription_registry.get_subscription("query-1", "agent-1")) is None

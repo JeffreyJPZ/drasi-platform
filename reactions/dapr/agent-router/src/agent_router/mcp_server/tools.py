@@ -58,14 +58,14 @@ class AgentRouterToolset:
         self._subscription_registry = subscription_registry
         self._query_configs = query_configs
 
-        mcp.tool(self.subscribe)
-        mcp.tool(self.unsubscribe)
-        mcp.tool(self.list_queries)
+        mcp.tool(self.subscribe_drasi_query)
+        mcp.tool(self.unsubscribe_drasi_query)
+        mcp.tool(self.list_drasi_queries)
 
         logger.info("DrasiQueryToolSet initialized and tools registered with MCP")
 
 
-    async def subscribe(
+    async def subscribe_drasi_query(
         self,
         query_id: str,
         event_types: Annotated[list[EventType], Field(min_length=1)],
@@ -73,13 +73,13 @@ class AgentRouterToolset:
         topic: str,
     ) -> SubscribeResult:
         """
-        Subscribe an agent to a Drasi query on a given pub/sub topic.
+        Subscribe an agent to a Drasi query.
 
         Args:
-            query_id (str): Unique identifier of the query to subscribe to.
-            event_types (list[EventType]): List of event types to which the agent is subscribed.
+            query_id (str): Unique ID of the Drasi query to subscribe to.
+            event_types (list[EventType]): List of Drasi event types that the agent is interested in.
                 Must contain at least one event type.
-            agent_id (str): Unique identifier of the agent making the subscription.
+            agent_id (str): Unique ID of the agent making the subscription.
                 Injected by the agent framework — must never be exposed to the LLM through the tool schema.
             topic (str): Name of the topic on which the agent will receive messages.
                 Injected by the agent — must never be exposed to the LLM through the tool schema.
@@ -127,7 +127,7 @@ class AgentRouterToolset:
         )
 
 
-    async def unsubscribe(
+    async def unsubscribe_drasi_query(
         self,
         query_id: str,
         agent_id: str,
@@ -137,10 +137,10 @@ class AgentRouterToolset:
         Unsubscribe an agent from a Drasi query.
 
         Args:
-            query_id (str): Unique identifier of the query to unsubscribe from.
-            agent_id (str): Unique identifier of the agent to unsubscribe.
+            query_id (str): Unique ID of the Drasi query to unsubscribe from.
+            agent_id (str): Unique ID of the agent to unsubscribe.
                 Injected by the agent framework — must never be exposed to the LLM through the tool schema.
-            subscription_id (str): Unique identifier of the subscription to remove.
+            subscription_id (str): Unique ID of the subscription to remove.
                 Injected by the agent framework — must never be exposed to the LLM through the tool schema.
 
         Returns:
@@ -186,7 +186,7 @@ class AgentRouterToolset:
 
 
     # TODO: remove this?
-    async def list_queries(self) -> ListQueriesResult:
+    async def list_drasi_queries(self) -> ListQueriesResult:
         """
         List all Drasi queries.
 
@@ -208,7 +208,7 @@ class AgentRouterToolset:
         Validate and create a QueryResult object from a query and its configuration.
 
         Args:
-            query_id (str): Unique identifier for the query.
+            query_id (str): Unique ID for the query.
             query_config (dict[str, Any]): Static query configuration.
 
         Returns:
