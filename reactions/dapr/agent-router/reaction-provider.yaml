@@ -21,3 +21,6 @@ spec:
   services:
     reaction:
       image: reaction-dapr-agent-router
+      dapr:
+        app-port: "80"
+        app-protocol: "http"
